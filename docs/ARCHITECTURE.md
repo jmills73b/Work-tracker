@@ -30,11 +30,13 @@ tests-e2e/            Playwright specs against a local Worker and a fresh local 
 - On a saved task, each subtask change saves immediately. While a task is being created they are drafts, sent with the create as `subtasks: [titles]`.
 - Ticking a subtask on a **To do** task moves it to **In progress**. A blocked or done task is left alone (`statusAfterSubtaskChange`). Ticking and un-ticking add "Completed: …" / "Reopened: …" lines to the timeline. Renaming doesn't.
 - Marking a task done does not tick its subtasks: they stay an honest record.
+- **Templates** (`migrations/0006_templates.sql`) copy a task's title, description, priority, category and subtasks. Each subtask's date is kept as `offset_days` from the task's target date (`dayOffset`; null when either date is missing, 0 when the same day). Starting a new task from a template creates draft subtasks that follow the target date as it is set (`shiftDate` / `placeDrafts` in `app.js`). A date picked by hand stops following.
 - A subtask can have its own **target date** (`migrations/0005_subtask_dates.sql`). It shows as a chip coloured like task dates: red when overdue, amber when due within a week. In a PATCH, `target_date: null` (or `''`) clears the date; a missing key leaves it alone.
 - **Board cards list their subtasks** (up to six, then "+N more") and can be ticked there. `GET /api/tasks` returns each task with its `subtasks` attached, using two queries in total rather than one per task (`attachSubtasks`).
 
 | Route | Purpose |
 | --- | --- |
+| `GET/POST /api/templates`, `DELETE /api/templates/:id` | List; save a task as a template (`{ task_id, name }`); delete |
 | `GET/POST /api/tasks` | List (with `subtask_total`, `subtask_done`), create |
 | `GET/PATCH/DELETE /api/tasks/:id` | Detail is `{ task, updates, subtasks }` |
 | `POST /api/tasks/:id/updates`, `DELETE …/updates/:uid` | Notes, optionally with a status change |

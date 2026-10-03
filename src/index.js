@@ -2,6 +2,7 @@ import * as admin from './http/admin.js';
 import * as auth from './http/auth.js';
 import { json, redirect, text, withSecurityHeaders } from './http/respond.js';
 import * as tasks from './http/tasks.js';
+import * as templates from './http/templates.js';
 import { getSessionUser } from './infra/auth.js';
 
 // Reachable without a session. Everything else is denied by default: a new page is
@@ -70,6 +71,13 @@ async function api(request, env, user, method, path) {
     if (method === 'GET') return admin.listInvites(env, user);
     if (method === 'POST') return admin.createInvite(env, user);
   }
+
+  if (path === '/api/templates') {
+    if (method === 'GET') return templates.list(env, user);
+    if (method === 'POST') return templates.create(request, env, user);
+  }
+  const tpl = path.match(/^\/api\/templates\/([^/]+)$/);
+  if (tpl && method === 'DELETE') return templates.remove(env, user, tpl[1]);
 
   if (path === '/api/tasks') {
     if (method === 'GET') return tasks.list(env, user);

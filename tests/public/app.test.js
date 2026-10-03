@@ -100,3 +100,27 @@ describe('notify', () => {
     expect(toast).not.toHaveBeenCalled();
   });
 });
+
+describe('templates on the page', () => {
+  const tpl = sliceFunctions('public/app.js', '  // The date `days` after an ISO date', '  /* end templates helpers */', ['shiftDate', 'placeDrafts']);
+
+  it('shifts a date by whole days, backwards across a month start', () => {
+    expect(tpl.shiftDate('2026-11-02', -3)).toBe('2026-10-30');
+  });
+
+  it('keeps an offset of zero as the task date itself', () => {
+    expect(tpl.shiftDate('2026-11-02', 0)).toBe('2026-11-02');
+  });
+
+  it('places template subtasks against the task date and leaves hand-dated ones alone', () => {
+    const drafts = [
+      { title: 'Draft', offset_days: -7, target_date: null },
+      { title: 'Hand-picked', offset_days: null, target_date: '2026-12-01' },
+    ];
+    expect(tpl.placeDrafts(drafts, '2026-11-20').map((d) => d.target_date)).toEqual(['2026-11-13', '2026-12-01']);
+  });
+
+  it('clears template dates again when the task date is cleared', () => {
+    expect(tpl.placeDrafts([{ title: 'Draft', offset_days: -7, target_date: '2026-11-13' }], null)[0].target_date).toBeNull();
+  });
+});

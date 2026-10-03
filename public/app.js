@@ -39,6 +39,7 @@
     current: null, // task open in the drawer (null = creating a new one)
     drawerOpen: false,
     subtasks: [], // the open task's subtasks, or drafts while creating a new task
+    templates: [],
     dirty: false,
   };
 
@@ -490,6 +491,9 @@
     $('#drawer-eyebrow').textContent = task ? 'Task' : 'New task';
     $('#save-btn').textContent = task ? 'Save changes' : 'Create task';
     $('#delete-btn').hidden = !task;
+    $('#save-template-btn').hidden = !task;
+    $('#template-pick').hidden = Boolean(task) || !state.templates.length;
+    $('#template-select').value = '';
     $('#updates-section').hidden = !task;
     $('#update-note').value = '';
     $('#update-status').value = '';
@@ -732,7 +736,8 @@
     const st = state.subtasks[i];
     if (!st || (st.target_date || null) === value) return;
     if (!state.current) {
-      renderSubtasks(state.subtasks.map((x, j) => (j === i ? { ...x, target_date: value } : x)));
+      // A date picked by hand stops following the template's offset.
+      renderSubtasks(state.subtasks.map((x, j) => (j === i ? { ...x, target_date: value, offset_days: null } : x)));
       return;
     }
     try {
@@ -834,6 +839,82 @@
     el.style.height = `${el.scrollHeight + 2}px`;
   }
 
+  /* ---------- Templates ---------- */
+
+  // The date `days` after an ISO date (negative = before); null when either is missing.
+  function shiftDate(iso, days) {
+    if (!iso || days == null) return null;
+    return new Date(Date.parse(`${iso}T00:00:00Z`) + days * 86400000).toISOString().slice(0, 10);
+  }
+
+  // Draft subtasks that came from a template follow the task's target date.
+  function placeDrafts(drafts, targetDate) {
+    return drafts.map((st) => (st.offset_days == null ? st : { ...st, target_date: shiftDate(targetDate, st.offset_days) }));
+  }
+
+  /* end templates helpers */
+
+  function renderTemplatePicker() {
+    $('#template-select').replaceChildren(
+      h('option', { value: '', text: 'Choose…' }),
+      ...state.templates.map((t) => h('option', { value: t.id, text: t.name })));
+    if (!state.current && state.drawerOpen) $('#template-pick').hidden = !state.templates.length;
+    renderTemplateList();
+  }
+
+  function applyTemplate(id) {
+    const t = state.templates.find((x) => x.id === id);
+    if (!t || state.current) return;
+    field('title').value = t.title;
+    field('description').value = t.description;
+    field('priority').value = t.priority;
+    field('category').value = t.category;
+    autoGrow(field('title'));
+    autoGrow(field('description'));
+    const drafts = t.subtasks.map((st, i) => ({ id: `draft-${i}-${Date.now()}`, title: st.title, done: 0, offset_days: st.offset_days, target_date: null }));
+    renderSubtasks(placeDrafts(drafts, field('target_date').value || null));
+    setDirty(true);
+    if (!field('target_date').value && t.subtasks.some((st) => st.offset_days != null)) {
+      toast('Set a target date and the subtask dates will follow');
+    }
+  }
+
+  async function saveAsTemplate() {
+    const task = state.current;
+    if (!task) return;
+    const name = prompt('Name this template', task.title);
+    if (name === null) return;
+    try {
+      const { templates } = await api('/templates', { method: 'POST', body: { task_id: task.id, name } });
+      state.templates = templates;
+      renderTemplatePicker();
+      toast(`Saved template "${name.trim()}"`);
+    } catch (err) {
+      notify(err);
+    }
+  }
+
+  function renderTemplateList() {
+    $('#templates-empty').hidden = state.templates.length > 0;
+    $('#template-list').replaceChildren(...state.templates.map((t) => h('li', {},
+      h('span', { class: 'template-name' }, h('strong', { text: t.name }),
+        h('span', { class: 'muted', text: t.subtasks.length ? ` · ${t.subtasks.length} subtask${t.subtasks.length === 1 ? '' : 's'}` : '' })),
+      h('button', {
+        type: 'button', class: 'icon-btn', title: 'Delete template', 'aria-label': `Delete template ${t.name}`,
+        onclick: () => deleteTemplate(t),
+      }, icon('trash', 15)))));
+  }
+
+  async function deleteTemplate(t) {
+    if (!confirm(`Delete the template "${t.name}"? Tasks made from it stay as they are.`)) return;
+    try {
+      state.templates = (await api(`/templates/${encodeURIComponent(t.id)}`, { method: 'DELETE' })).templates;
+      renderTemplatePicker();
+    } catch (err) {
+      notify(err);
+    }
+  }
+
   /* ---------- Theme ---------- */
 
   function applyTheme(theme) {
@@ -862,11 +943,14 @@
     form.addEventListener('submit', saveTask);
     form.addEventListener('input', (e) => {
       if (e.target === field('title') && /[\r\n]/.test(e.target.value)) e.target.value = e.target.value.replace(/[\r\n]+/g, ' ');
+      if (e.target === field('target_date') && !state.current) renderSubtasks(placeDrafts(state.subtasks, e.target.value || null));
       if (e.target.tagName === 'TEXTAREA') autoGrow(e.target);
       if (e.target.closest('.composer, .subtasks')) return;
       setDirty(true);
     });
     $('#subtask-add-btn').addEventListener('click', addSubtask);
+    $('#template-select').addEventListener('change', (e) => applyTemplate(e.target.value));
+    $('#save-template-btn').addEventListener('click', saveAsTemplate);
     $('#subtask-input').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); addSubtask(); }
     });
@@ -928,9 +1012,11 @@
   }
 
   async function loadApp() {
-    const [me, list] = await Promise.all([api('/auth/me'), api('/tasks')]);
+    const [me, list, tpl] = await Promise.all([api('/auth/me'), api('/tasks'), api('/templates')]);
     setUser(me);
     state.tasks = list.tasks;
+    state.templates = tpl.templates;
+    renderTemplatePicker();
     state.loaded = true;
     render();
   }
@@ -1021,6 +1107,8 @@
     $('#user-button').addEventListener('click', (e) => { e.stopPropagation(); toggleMenu(); });
     $('#sign-out-btn').addEventListener('click', signOut);
     $('#change-password-btn').addEventListener('click', openPasswordDialog);
+    $('#templates-btn').addEventListener('click', () => { closeMenu(); renderTemplateList(); $('#templates-dialog').showModal(); });
+    $('#templates-close').addEventListener('click', () => $('#templates-dialog').close());
     $('#invite-btn').addEventListener('click', openInviteDialog);
     $('#password-form').addEventListener('submit', changePassword);
     $('#password-cancel').addEventListener('click', () => $('#password-dialog').close());

@@ -43,6 +43,7 @@
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
         </button>
         <div class="menu" id="user-dropdown" role="menu" hidden>
+          <button type="button" role="menuitem" id="templates-btn">Templates</button>
           <button type="button" role="menuitem" id="change-password-btn">Change password</button>
           <button type="button" role="menuitem" id="invite-btn" hidden>Invite someone</button>
           <button type="button" role="menuitem" id="sign-out-btn">Sign out</button>
@@ -110,6 +111,12 @@
       </div>
 
       <div class="drawer-body">
+        <label class="template-pick" id="template-pick" hidden>
+          <span>Start from a template</span>
+          <select id="template-select" class="select mini-select" aria-label="Start from a template">
+            <option value="">Choose…</option>
+          </select>
+        </label>
         <textarea name="title" class="title-input" placeholder="What needs doing?" maxlength="200" rows="1" aria-label="Task title" required enterkeyhint="done"></textarea>
         <textarea name="description" class="desc-input" placeholder="Add details, links, context…" rows="1" maxlength="5000" aria-label="Description"></textarea>
 
@@ -156,6 +163,7 @@
 
         <div class="form-actions">
           <button type="submit" class="btn primary" id="save-btn">Create task</button>
+          <button type="button" class="btn ghost" id="save-template-btn" hidden>Save as template</button>
           <button type="button" class="btn ghost danger" id="delete-btn" hidden>Delete</button>
           <span class="meta" id="task-meta"></span>
         </div>
@@ -206,6 +214,18 @@
         <button type="submit" class="btn primary">Update password</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog class="dialog" id="templates-dialog" aria-labelledby="templates-title">
+    <div class="dialog-body">
+      <h2 id="templates-title">Templates</h2>
+      <p class="hint">Save any task as a template from its "Save as template" button. Start a new task from one with "Start from a template".</p>
+      <ul class="template-list" id="template-list"></ul>
+      <p class="muted" id="templates-empty">No templates yet.</p>
+      <div class="dialog-actions">
+        <button type="button" class="btn" id="templates-close">Done</button>
+      </div>
+    </div>
   </dialog>
 
   <dialog class="dialog" id="invite-dialog" aria-labelledby="invite-title">
