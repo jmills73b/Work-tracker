@@ -1,0 +1,3 @@
+# Copy to .dev.vars for local development only (never deployed).
+# Lets `npm run dev` on localhost skip Cloudflare Access and sign you in as this email.
+DEV_AUTH_EMAIL=you@example.com

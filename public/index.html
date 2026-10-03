@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Work Tracker</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/app.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+      </span>
+      <span class="brand-name">Work Tracker</span>
+    </div>
+
+    <label class="search">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input id="search" type="search" placeholder="Search tasks" autocomplete="off" aria-label="Search tasks">
+      <kbd>/</kbd>
+    </label>
+
+    <div class="topbar-actions">
+      <button id="theme-toggle" class="icon-btn" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
+      </button>
+      <span id="user" class="user"></span>
+      <button id="new-task" class="btn primary" type="button" title="New task (N)">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        <span>New task</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="stats" id="stats" aria-label="Summary"></section>
+
+    <section class="toolbar" aria-label="View options">
+      <div class="segmented" id="view-toggle">
+        <button type="button" data-view="list">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>
+          List
+        </button>
+        <button type="button" data-view="board">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="10" rx="1.5"/><rect x="17" y="4" width="4" height="13" rx="1.5"/></svg>
+          Board
+        </button>
+      </div>
+
+      <div class="filters">
+        <div class="chips" id="status-filter" role="group" aria-label="Filter by status">
+          <button type="button" class="chip-btn" data-status="active">Active</button>
+          <button type="button" class="chip-btn" data-status="todo">To do</button>
+          <button type="button" class="chip-btn" data-status="in_progress">In progress</button>
+          <button type="button" class="chip-btn" data-status="blocked">Blocked</button>
+          <button type="button" class="chip-btn" data-status="done">Done</button>
+          <button type="button" class="chip-btn" data-status="all">All</button>
+        </div>
+        <select id="priority-filter" class="select" aria-label="Filter by priority">
+          <option value="all">All priorities</option>
+          <option value="urgent">Urgent</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+        <select id="sort" class="select" aria-label="Sort tasks">
+          <option value="due">Sort: Target date</option>
+          <option value="priority">Sort: Priority</option>
+          <option value="updated">Sort: Recently updated</option>
+          <option value="created">Sort: Newest</option>
+        </select>
+      </div>
+    </section>
+
+    <section id="tasks" aria-live="polite"></section>
+  </main>
+
+  <div class="scrim" id="scrim" hidden></div>
+
+  <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="Task details" tabindex="-1" hidden>
+    <form id="task-form" novalidate autocomplete="off">
+      <div class="drawer-head">
+        <span class="eyebrow" id="drawer-eyebrow">New task</span>
+        <button type="button" class="icon-btn" id="close-drawer" aria-label="Close (Esc)" title="Close (Esc)">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+
+      <div class="drawer-body">
+        <input name="title" class="title-input" placeholder="What needs doing?" maxlength="200" aria-label="Task title" required>
+        <textarea name="description" class="desc-input" placeholder="Add details, links, context…" rows="3" maxlength="5000" aria-label="Description"></textarea>
+
+        <div class="field-grid">
+          <label class="field">
+            <span>Status</span>
+            <select name="status" class="select input">
+              <option value="todo">To do</option>
+              <option value="in_progress">In progress</option>
+              <option value="blocked">Blocked</option>
+              <option value="done">Done</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Priority</span>
+            <select name="priority" class="select input">
+              <option value="urgent">Urgent</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Target date</span>
+            <input name="target_date" type="date" class="input">
+          </label>
+          <label class="field">
+            <span>Category</span>
+            <input name="category" class="input" list="categories" maxlength="60" placeholder="e.g. Client X">
+          </label>
+        </div>
+
+        <label class="field progress-field">
+          <span class="field-row"><span>Progress</span><output id="progress-out">0%</output></span>
+          <input name="progress" type="range" min="0" max="100" step="5" value="0">
+        </label>
+
+        <div class="form-actions">
+          <button type="submit" class="btn primary" id="save-btn">Create task</button>
+          <button type="button" class="btn ghost danger" id="delete-btn" hidden>Delete</button>
+          <span class="meta" id="task-meta"></span>
+        </div>
+
+        <section class="updates" id="updates-section" hidden>
+          <h3>Progress updates</h3>
+          <div class="composer">
+            <textarea id="update-note" rows="2" maxlength="2000" placeholder="What's the latest? (Ctrl+Enter to post)" aria-label="Progress update"></textarea>
+            <div class="composer-row">
+              <label class="mini">Progress
+                <select id="update-progress" class="select mini-select">
+                  <option value="">—</option>
+                </select>
+              </label>
+              <label class="mini">Status
+                <select id="update-status" class="select mini-select">
+                  <option value="">No change</option>
+                  <option value="todo">To do</option>
+                  <option value="in_progress">In progress</option>
+                  <option value="blocked">Blocked</option>
+                  <option value="done">Done</option>
+                </select>
+              </label>
+              <button type="button" class="btn" id="post-update">Post update</button>
+            </div>
+          </div>
+          <ol class="timeline" id="timeline"></ol>
+        </section>
+      </div>
+    </form>
+    <datalist id="categories"></datalist>
+  </aside>
+
+  <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+</body>
+</html>

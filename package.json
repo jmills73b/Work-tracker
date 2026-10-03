@@ -1,0 +1,15 @@
+{
+  "name": "work-tracker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler pages dev",
+    "db:create": "wrangler d1 create work-tracker",
+    "db:migrate:local": "wrangler d1 migrations apply work-tracker --local",
+    "db:migrate": "wrangler d1 migrations apply work-tracker --remote",
+    "deploy": "wrangler pages deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
