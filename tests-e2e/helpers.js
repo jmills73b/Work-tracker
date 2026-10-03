@@ -30,3 +30,10 @@ export async function signIn(page) {
   await page.waitForURL((url) => url.pathname === '/');
   await expect(page.locator('#user-name')).toHaveText(ACCOUNT.name);
 }
+
+// The + button opens quick add; "Add details…" goes on to the full form.
+export async function openTaskForm(page) {
+  await page.locator('#new-task').click();
+  await page.locator('#quick-details').click();
+  await expect(page.locator('#drawer')).toBeVisible();
+}

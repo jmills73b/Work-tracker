@@ -1,12 +1,12 @@
 import { expect, test } from '@playwright/test';
-import { signIn } from './helpers.js';
+import { openTaskForm, signIn } from './helpers.js';
 
 // Saving uses a prompt and reuse goes through a picker and a date field: wiring that only
 // breaks end to end.
 test('a task saved as a template lays its subtask dates out again from a new target date', async ({ page }) => {
   await signIn(page);
 
-  await page.locator('#new-task').click();
+  await openTaskForm(page);
   await page.locator('#task-form [name=title]').fill('Monthly board pack');
   await page.locator('#task-form [name=target_date]').fill('2030-03-20');
   for (const title of ['Collect numbers', 'Send pack']) {
@@ -23,7 +23,7 @@ test('a task saved as a template lays its subtask dates out again from a new tar
   await expect(page.locator('.toast').last()).toHaveText('Saved template "Board pack"');
   await page.keyboard.press('Escape');
 
-  await page.locator('#new-task').click();
+  await openTaskForm(page);
   await page.locator('#template-select').selectOption({ label: 'Board pack' });
   await expect(page.locator('#task-form [name=title]')).toHaveValue('Monthly board pack');
   await page.locator('#task-form [name=target_date]').fill('2030-04-17');

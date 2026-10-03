@@ -520,6 +520,13 @@ kbd {
 input[type="date"].input { -webkit-appearance: none; appearance: none; display: block; min-width: 0; line-height: 34px; text-align: left; }
 input[type="date"].input::-webkit-date-and-time-value { text-align: left; margin: 0; }
 .input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+/* ---------- Quick add ---------- */
+.quick-dialog { margin-top: 12vh; width: min(560px, calc(100vw - 24px)); }
+.quick-input { height: 48px; font-size: 17px; }
+.quick-preview { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 28px; font-size: 13px; color: var(--text-2); }
+.quick-preview .qp-title { font-weight: 600; color: var(--text); }
+.quick-preview .qp-empty { color: var(--text-3); }
+
 /* ---------- Templates ---------- */
 .template-pick { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 14px; padding: 8px 12px; border-radius: 10px; background: var(--accent-soft); color: var(--text-2); font-size: 12.5px; font-weight: 600; }
 .template-pick .select { max-width: 60%; }

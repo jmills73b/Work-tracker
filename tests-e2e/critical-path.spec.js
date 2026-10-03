@@ -1,12 +1,12 @@
 import { expect, test } from '@playwright/test';
-import { ACCOUNT, signIn } from './helpers.js';
+import { ACCOUNT, openTaskForm, signIn } from './helpers.js';
 
 // The one spec that proves the whole chain wires together: page gate → login page →
 // session cookie → API → D1 → back to the page.
 test('a task with subtasks can be created, updated, completed and is still there after signing back in', async ({ page }) => {
   await signIn(page);
 
-  await page.locator('#new-task').click();
+  await openTaskForm(page);
   await page.locator('#task-form [name=title]').fill('Write the quarterly report');
   await page.locator('#task-form [name=priority]').selectOption('high');
   // Subtasks added before the task exists are drafts, created along with it.

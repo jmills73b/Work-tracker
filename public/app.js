@@ -402,7 +402,7 @@
         ? 'Capture your first task — give it a priority, a target date and subtasks, then post updates as you go.'
         : 'Try a different filter or search term.' }),
       firstRun
-        ? h('button', { type: 'button', class: 'btn primary', onclick: openNew }, icon('plus'), 'New task')
+        ? h('button', { type: 'button', class: 'btn primary', onclick: openQuickAdd }, icon('plus'), 'New task')
         : h('button', { type: 'button', class: 'btn', onclick: clearFilters }, 'Clear filters'));
   }
 
@@ -839,6 +839,160 @@
     el.style.height = `${el.scrollHeight + 2}px`;
   }
 
+  /* ---------- Quick add parser ---------- */
+  // One line in, task fields out: "Board deck fri !high #Leadership". Recognised words are
+  // taken out of the title; the preview shows what was understood before anything is saved.
+
+  const QA_WEEKDAYS = { sun: 0, sunday: 0, mon: 1, monday: 1, tue: 2, tues: 2, tuesday: 2, wed: 3, weds: 3, wednesday: 3, thu: 4, thur: 4, thurs: 4, thursday: 4, fri: 5, friday: 5, sat: 6, saturday: 6 };
+  const QA_MONTHS = { jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4, may: 5, jun: 6, june: 6, jul: 7, july: 7, aug: 8, august: 8, sep: 9, sept: 9, september: 9, oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12 };
+  const QA_PRIORITY = { '!!!': 'urgent', '!urgent': 'urgent', '!u': 'urgent', '!!': 'high', '!high': 'high', '!h': 'high', '!medium': 'medium', '!med': 'medium', '!m': 'medium', '!low': 'low', '!l': 'low' };
+  const QA_DAY = '(?:(?:by|on|due)\\s+)?';
+  const QA_WEEKDAY_RE = Object.keys(QA_WEEKDAYS).sort((a, b) => b.length - a.length).join('|');
+  const QA_MONTH_RE = Object.keys(QA_MONTHS).sort((a, b) => b.length - a.length).join('|');
+
+  // A real calendar date or null (31 Feb is refused rather than rolled into March).
+  function qaIso(y, m, d) {
+    const t = new Date(Date.UTC(y, m - 1, d));
+    return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d ? t.toISOString().slice(0, 10) : null;
+  }
+
+  const qaPlusDays = (today, n) => qaIso(today.getFullYear(), today.getMonth() + 1, today.getDate()) && new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate() + n)).toISOString().slice(0, 10);
+
+  // A day and month with no year: this year, or next year once that date has passed.
+  function qaNextYearly(today, m, d) {
+    const thisYear = qaIso(today.getFullYear(), m, d);
+    if (!thisYear) return null;
+    return thisYear < qaPlusDays(today, 0) ? qaIso(today.getFullYear() + 1, m, d) : thisYear;
+  }
+
+  function parseQuickAdd(text, today = new Date()) {
+    const out = { title: '', target_date: null, priority: null, category: null };
+    let rest = ` ${String(text).replace(/\s+/g, ' ')} `;
+    const take = (re, fn) => {
+      rest = rest.replace(re, (...m) => {
+        const kept = fn(...m);
+        return kept === false ? m[0] : ' ';
+      });
+    };
+    const date = (re, fn) => take(re, (...m) => {
+      if (out.target_date) return false;
+      const iso = fn(...m);
+      if (!iso) return false;
+      out.target_date = iso;
+      return true;
+    });
+
+    take(/\s(!!!|!!|!(?:urgent|high|medium|med|low|u|h|m|l))(?=\s)/i, (_, p) => {
+      if (out.priority) return false;
+      out.priority = QA_PRIORITY[p.toLowerCase()];
+      return true;
+    });
+    take(/\s#([\p{L}\p{N}_-]+)(?=\s)/u, (_, c) => {
+      if (out.category) return false;
+      out.category = c.replace(/_/g, ' ');
+      return true;
+    });
+
+    const y4 = (y) => (y.length === 2 ? 2000 + Number(y) : Number(y));
+    date(new RegExp(`\\s${QA_DAY}(\\d{1,2})/(\\d{1,2})(?:/(\\d{2}|\\d{4}))?(?=\\s)`, 'i'),
+      (_, d, m, y) => (y ? qaIso(y4(y), Number(m), Number(d)) : qaNextYearly(today, Number(m), Number(d))));
+    date(new RegExp(`\\s${QA_DAY}(\\d{1,2})(?:st|nd|rd|th)?\\s+(${QA_MONTH_RE})(?:\\s+(\\d{4}))?(?=\\s)`, 'i'),
+      (_, d, mon, y) => (y ? qaIso(Number(y), QA_MONTHS[mon.toLowerCase()], Number(d)) : qaNextYearly(today, QA_MONTHS[mon.toLowerCase()], Number(d))));
+    date(new RegExp(`\\s${QA_DAY}(${QA_MONTH_RE})\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?(?=\\s)`, 'i'),
+      (_, mon, d, y) => (y ? qaIso(Number(y), QA_MONTHS[mon.toLowerCase()], Number(d)) : qaNextYearly(today, QA_MONTHS[mon.toLowerCase()], Number(d))));
+    date(new RegExp(`\\s${QA_DAY}(today|tonight)(?=\\s)`, 'i'), () => qaPlusDays(today, 0));
+    date(new RegExp(`\\s${QA_DAY}(tomorrow|tmrw|tmr)(?=\\s)`, 'i'), () => qaPlusDays(today, 1));
+    date(new RegExp(`\\s${QA_DAY}in\\s+(\\d{1,3})\\s+(days?|weeks?|months?)(?=\\s)`, 'i'), (_, n, unit) => {
+      const k = Number(n);
+      if (/^day/i.test(unit)) return qaPlusDays(today, k);
+      if (/^week/i.test(unit)) return qaPlusDays(today, 7 * k);
+      const m0 = today.getMonth() + k; // same day k months on, clamped to the month's last day
+      const last = new Date(Date.UTC(today.getFullYear(), m0 + 1, 0)).getUTCDate();
+      return new Date(Date.UTC(today.getFullYear(), m0, Math.min(today.getDate(), last))).toISOString().slice(0, 10);
+    });
+    date(new RegExp(`\\s${QA_DAY}next\\s+week(?=\\s)`, 'i'), () => qaPlusDays(today, ((1 - today.getDay() + 7) % 7) || 7));
+    date(new RegExp(`\\s${QA_DAY}(?:eow|end\\s+of\\s+(?:the\\s+)?week)(?=\\s)`, 'i'), () => qaPlusDays(today, (5 - today.getDay() + 7) % 7));
+    date(new RegExp(`\\s${QA_DAY}(?:eom|end\\s+of\\s+(?:the\\s+)?month)(?=\\s)`, 'i'),
+      () => new Date(Date.UTC(today.getFullYear(), today.getMonth() + 1, 0)).toISOString().slice(0, 10));
+    // "fri" = the coming Friday (today if it is Friday). "next fri" = the Friday of next
+    // week (Monday-start): from a Saturday that is the coming one, from a Monday a week later.
+    date(new RegExp(`\\s${QA_DAY}(next\\s+)?(${QA_WEEKDAY_RE})(?=\\s)`, 'i'), (_, next, name) => {
+      const dow = today.getDay();
+      let diff = (QA_WEEKDAYS[name.toLowerCase()] - dow + 7) % 7;
+      if (next) {
+        const daysToSunday = (7 - dow) % 7;
+        if (diff <= daysToSunday) diff += 7;
+      }
+      return qaPlusDays(today, diff);
+    });
+
+    out.title = rest.replace(/\s+/g, ' ').trim();
+    return out;
+  }
+
+  /* end quick add parser */
+
+  /* ---------- Quick add ---------- */
+
+  function openQuickAdd() {
+    $('#quick-input').value = '';
+    renderQuickPreview();
+    $('#quick-dialog').showModal();
+    $('#quick-input').focus();
+  }
+
+  function renderQuickPreview() {
+    const p = parseQuickAdd($('#quick-input').value);
+    const parts = [];
+    if (p.title) parts.push(h('span', { class: 'qp-title', text: p.title }));
+    if (p.target_date) {
+      const due = dueInfo({ target_date: p.target_date, status: 'todo' });
+      const words = new Date(`${p.target_date}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+      parts.push(h('span', { class: `date-chip ${due.cls || 'set'}` }, icon('calendar', 13), h('span', { text: words })));
+    }
+    if (p.priority) parts.push(h('span', { class: `prio-badge prio-${p.priority}`, text: PRIORITY[p.priority] }));
+    if (p.category) parts.push(h('span', { class: 'tag', text: p.category }));
+    $('#quick-preview').replaceChildren(...(parts.length ? parts : [h('span', { class: 'qp-empty', text: 'Type a task; dates, !priority and #category are picked out as you go.' })]));
+    $('#quick-submit').disabled = !p.title;
+    return p;
+  }
+
+  async function submitQuickAdd(e) {
+    e.preventDefault();
+    const p = parseQuickAdd($('#quick-input').value);
+    if (!p.title) return;
+    const body = { title: p.title };
+    if (p.target_date) body.target_date = p.target_date;
+    if (p.priority) body.priority = p.priority;
+    if (p.category) body.category = p.category;
+    const btn = $('#quick-submit');
+    btn.disabled = true;
+    try {
+      const detail = await api('/tasks', { method: 'POST', body });
+      upsert(detail.task);
+      render();
+      $('#quick-dialog').close();
+      toast(`Added "${detail.task.title}"`);
+    } catch (err) {
+      notify(err);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // Hand what was typed to the full form, for a description, subtasks or a template.
+  function quickToDetails() {
+    const p = parseQuickAdd($('#quick-input').value);
+    $('#quick-dialog').close();
+    openNew();
+    if (p.title) field('title').value = p.title;
+    if (p.target_date) field('target_date').value = p.target_date;
+    if (p.priority) field('priority').value = p.priority;
+    if (p.category) field('category').value = p.category;
+    requestAnimationFrame(() => autoGrow(field('title')));
+    if (p.title) setDirty(true);
+  }
+
   /* ---------- Templates ---------- */
 
   // The date `days` after an ISO date (negative = before); null when either is missing.
@@ -934,7 +1088,10 @@
   /* ---------- Wiring ---------- */
 
   function bind() {
-    $('#new-task').addEventListener('click', openNew);
+    $('#new-task').addEventListener('click', openQuickAdd);
+    $('#quick-input').addEventListener('input', renderQuickPreview);
+    $('#quick-form').addEventListener('submit', submitQuickAdd);
+    $('#quick-details').addEventListener('click', quickToDetails);
     $('#theme-toggle').addEventListener('click', toggleTheme);
     $('#close-drawer').addEventListener('click', () => closeDrawer());
     $('#scrim').addEventListener('click', () => closeDrawer());
@@ -992,7 +1149,7 @@
       const t = e.target;
       if (e.ctrlKey || e.metaKey || e.altKey || state.drawerOpen || document.querySelector('dialog[open]')) return;
       if (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName)) return;
-      if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openNew(); }
+      if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openQuickAdd(); }
       if (e.key === '/') { e.preventDefault(); $('#search').focus(); }
     });
 

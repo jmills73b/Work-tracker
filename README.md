@@ -6,11 +6,12 @@ A clean, private tracker for your own tasks. Capture a task, set its priority an
 - **Board view**: drag cards between To do, In progress, Blocked and Done
 - **Summary tiles** (Active, In progress, Due this week, Overdue, Done in the last 30 days). Click a tile to filter by it
 - **Subtasks**: a checklist under each task, each with an optional due date. Shown as "2/5" in the list, and listed on board cards where they can be ticked off
+- **Quick add**: type `Board deck fri !high #Leadership` and it becomes a High task due Friday in Leadership, with a preview before saving
 - **Templates**: save any task as a template, then start new tasks from it with the subtask dates laid out again
 - **Task drawer** for editing and posting updates. Status, priority, date and subtask changes are logged automatically
 - Search, filters, sorting, light/dark mode. Laid out for iPhone and iPad as well as desktop, and can be added to the Home Screen
 - Email and password sign-in. The first account is the admin and can invite others; everyone's tasks are private
-- Shortcuts: `N` new task, `/` search, `Esc` close, `Ctrl/⌘+Enter` save or post
+- Shortcuts: `N` quick add, `/` search, `Esc` close, `Ctrl/⌘+Enter` save or post
 
 It runs as one Cloudflare Worker with a D1 database, all on the free tier. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how sign-in, the request gate and the tests work.
 

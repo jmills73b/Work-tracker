@@ -124,3 +124,66 @@ describe('templates on the page', () => {
     expect(tpl.placeDrafts([{ title: 'Draft', offset_days: -7, target_date: '2026-11-13' }], null)[0].target_date).toBeNull();
   });
 });
+
+describe('parseQuickAdd', () => {
+  const { parseQuickAdd } = sliceFunctions('public/app.js', '  const QA_WEEKDAYS', '  /* end quick add parser */', ['parseQuickAdd']);
+  // Saturday 3 October 2026; and Monday 5 October for the "next" rules.
+  const SAT = new Date(2026, 9, 3, 15);
+  const MON = new Date(2026, 9, 5, 9);
+
+  it('picks out a weekday, a priority and a category, leaving the title', () => {
+    expect(parseQuickAdd('Board deck fri !high #Leadership', SAT))
+      .toEqual({ title: 'Board deck', target_date: '2026-10-09', priority: 'high', category: 'Leadership' });
+  });
+
+  it('reads numeric dates as day/month, the UK way', () => {
+    expect(parseQuickAdd('Pay invoice 12/10', SAT).target_date).toBe('2026-10-12');
+  });
+
+  it('rolls a day and month that has already passed into next year', () => {
+    expect(parseQuickAdd('Renew insurance 2 Jan', SAT).target_date).toBe('2027-01-02');
+  });
+
+  it('leaves an impossible date in the title instead of guessing', () => {
+    expect(parseQuickAdd('Fix 31/02 thing', SAT)).toMatchObject({ title: 'Fix 31/02 thing', target_date: null });
+  });
+
+  it("does not mistake a name or a possessive for a date", () => {
+    // "tom" and "today's" were the obvious false positives.
+    expect(parseQuickAdd('Call Tom tomorrow', SAT)).toMatchObject({ title: 'Call Tom', target_date: '2026-10-04' });
+    expect(parseQuickAdd("Today's standup notes", SAT)).toMatchObject({ title: "Today's standup notes", target_date: null });
+  });
+
+  it('reads "fri" as the coming Friday, and as today on a Friday', () => {
+    expect(parseQuickAdd('x fri', MON).target_date).toBe('2026-10-09');
+    expect(parseQuickAdd('x fri', new Date(2026, 9, 9, 8)).target_date).toBe('2026-10-09');
+  });
+
+  it('reads "next fri" as the Friday of next week', () => {
+    expect(parseQuickAdd('x next fri', MON).target_date).toBe('2026-10-16');
+    expect(parseQuickAdd('x next fri', SAT).target_date).toBe('2026-10-09');
+  });
+
+  it('understands relative phrases', () => {
+    expect(parseQuickAdd('x in 2 weeks', SAT).target_date).toBe('2026-10-17');
+    expect(parseQuickAdd('x next week', SAT).target_date).toBe('2026-10-05');
+    expect(parseQuickAdd('x eom', SAT).target_date).toBe('2026-10-31');
+    expect(parseQuickAdd('x eow', MON).target_date).toBe('2026-10-09');
+  });
+
+  it('clamps "in 1 month" from the 31st to the end of a shorter month', () => {
+    expect(parseQuickAdd('x in 1 month', new Date(2026, 0, 31, 9)).target_date).toBe('2026-02-28');
+  });
+
+  it('uses the first date and priority it finds and leaves later ones in the title', () => {
+    expect(parseQuickAdd('Move fri to mon !low !high', SAT)).toMatchObject({ title: 'Move to mon !high', target_date: '2026-10-09', priority: 'low' });
+  });
+
+  it('gives an empty title for a line that is only tokens, so nothing is saved', () => {
+    expect(parseQuickAdd('tomorrow !high', SAT).title).toBe('');
+  });
+
+  it('turns underscores in a category into spaces', () => {
+    expect(parseQuickAdd('Plan #Team_Events', SAT).category).toBe('Team Events');
+  });
+});

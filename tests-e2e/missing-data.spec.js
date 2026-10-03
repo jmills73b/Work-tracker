@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { signIn } from './helpers.js';
+import { openTaskForm, signIn } from './helpers.js';
 
 // States that only break end to end: a blank page and a page that explains itself look
 // identical to every unit test.
@@ -19,7 +19,7 @@ test('a failed save shows the server message and the page keeps working', async 
     route.request().method() === 'POST'
       ? route.fulfill({ status: 500, json: { error: 'Database is having a moment' } })
       : route.continue());
-  await page.locator('#new-task').click();
+  await openTaskForm(page);
   await page.locator('#task-form [name=title]').fill('This save will fail');
   await page.locator('#save-btn').click();
   await expect(page.locator('.toast.error')).toHaveText('Database is having a moment');
