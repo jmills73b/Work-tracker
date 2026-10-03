@@ -10,6 +10,10 @@ const TASK_COLUMNS = `
      ORDER BY u.created_at DESC, u.rowid DESC LIMIT 1) AS last_note,
   (SELECT MAX(u.created_at) FROM task_updates u WHERE u.task_id = t.id AND u.kind = 'note') AS last_note_at`;
 
+// "Progress: 30% → 60%" lines were logged before percentages were retired. They stay in
+// the database (history is never rewritten) but are no longer shown.
+export const RETIRED_PROGRESS_LINE = "(kind = 'change' AND note LIKE 'Progress: %')";
+
 const SUBTASK_COLUMNS = 'id, task_id, title, done, position, target_date, completed_at';
 
 // Every task with its subtasks attached, from two queries rather than one per task.
@@ -40,7 +44,8 @@ export async function taskDetail(env, userId, id) {
   const [updates, subtasks] = await Promise.all([
     env.DB.prepare(
       `SELECT id, kind, note, status, created_at FROM task_updates
-       WHERE task_id = ? AND user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 500`,
+       WHERE task_id = ? AND user_id = ? AND NOT ${RETIRED_PROGRESS_LINE}
+       ORDER BY created_at DESC, rowid DESC LIMIT 500`,
     ).bind(id, userId).all(),
     env.DB.prepare(
       `SELECT ${SUBTASK_COLUMNS} FROM subtasks

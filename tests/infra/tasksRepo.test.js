@@ -31,3 +31,13 @@ describe('updateSubtask', () => {
     expect(run({ title: 'Renamed' }).sql).not.toContain('target_date');
   });
 });
+
+describe('the task timeline', () => {
+  it('leaves out the retired "Progress: x% → y%" lines but keeps everything else', async () => {
+    const { taskDetail } = await import('../../src/infra/tasksRepo.js');
+    const db = fakeDb({ first: [['FROM tasks t WHERE t.id', { id: 't1' }]] });
+    await taskDetail({ DB: db }, 7, 't1');
+    const sql = db.calls.find((c) => c.sql?.includes('LIMIT 500') && c.sql.includes('FROM task_updates')).sql;
+    expect(sql).toContain("AND NOT (kind = 'change' AND note LIKE 'Progress: %')");
+  });
+});
