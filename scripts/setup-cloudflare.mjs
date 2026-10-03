@@ -4,6 +4,7 @@
 // that already exists.
 //
 //   CLOUDFLARE_API_TOKEN=... npm run setup -- you@example.com
+//   (or set ALLOWED_EMAIL instead of passing the email; GitHub Actions does this)
 //
 // Optional env: CLOUDFLARE_ACCOUNT_ID (auto-detected if the token sees one account),
 // ACCESS_TEAM_NAME (only needed if Zero Trust has never been set up on the account),
@@ -44,10 +45,11 @@ async function api(method, path, body) {
   return data.result;
 }
 
-function wrangler(args, env = {}) {
+function wrangler(args, { input } = {}) {
   execFileSync('npx', ['--yes', 'wrangler', ...args], {
-    stdio: 'inherit',
-    env: { ...process.env, CI: 'true', WRANGLER_SEND_METRICS: 'false', CLOUDFLARE_ACCOUNT_ID: ACCOUNT, ...env },
+    input,
+    stdio: [input === undefined ? 'inherit' : 'pipe', 'inherit', 'inherit'],
+    env: { ...process.env, CI: 'true', WRANGLER_SEND_METRICS: 'false', CLOUDFLARE_ACCOUNT_ID: ACCOUNT },
   });
 }
 
@@ -124,7 +126,7 @@ if (!idps.some((p) => p.type === 'onetimepin')) {
 }
 
 // ---------- Access policy + application ----------
-step(`Access policy (allow ${EMAIL})`);
+step('Access policy (allow only your email)');
 const policyBody = { name: POLICY_NAME, decision: 'allow', include: [{ email: { email: EMAIL } }] };
 let policy = (await api('GET', `${A}/access/policies?per_page=100`)).find((p) => p.name === POLICY_NAME);
 policy = policy
@@ -158,9 +160,11 @@ console.log(`  aud ${app.aud}`);
 step('Writing wrangler.toml');
 setToml(/^ACCESS_TEAM_DOMAIN = ".*?"/m, `ACCESS_TEAM_DOMAIN = "${teamDomain}"`);
 setToml(/^ACCESS_AUD = ".*?"/m, `ACCESS_AUD = "${app.aud}"`);
-setToml(/^ALLOWED_EMAILS = ".*?"/m, `ALLOWED_EMAILS = "${EMAIL}"`);
+
+step('Saving allowed email as an encrypted Pages secret');
+wrangler(['pages', 'secret', 'put', 'ALLOWED_EMAILS', '--project-name', PROJECT], { input: `${EMAIL}\n` });
 
 step('Deploying');
 wrangler(['pages', 'deploy', '--project-name', PROJECT, '--branch', 'main', '--commit-dirty=true']);
 
-console.log(`\n✔ Live at https://${host}  (sign in with ${EMAIL})`);
+console.log(`\n✔ Live at https://${host}`);

@@ -6,7 +6,7 @@ pages_build_output_dir = "public"
 [vars]
 ACCESS_TEAM_DOMAIN = ""   # e.g. "yourname.cloudflareaccess.com"
 ACCESS_AUD = ""           # the Access application's "Application Audience (AUD) Tag"
-ALLOWED_EMAILS = ""       # optional extra lock, e.g. "you@example.com"
+# ALLOWED_EMAILS is set as an encrypted Pages secret (not here) so your email stays out of the repo.
 
 [[d1_databases]]
 binding = "DB"

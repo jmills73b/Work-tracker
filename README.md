@@ -28,23 +28,25 @@ No frameworks and no third-party scripts. The front end is plain HTML, CSS and J
 - **Strict security headers** (`public/_headers`): a Content Security Policy that only allows the site's own files, HSTS, no framing, `nosniff`, and no-referrer. User text is only ever written to the page as plain text, never as HTML.
 - **Server-side validation** of every field, and parameterised SQL everywhere.
 
-## Deploy with one command (recommended)
+## Deploy with GitHub Actions (recommended)
 
-1. Create a Cloudflare API token (**My Profile → API Tokens → Create Token → Custom token**) with these **Account** permissions:
+Every push to `main` sets up Cloudflare (first time only) and deploys the site automatically.
+
+1. Create a Cloudflare API token (**My Profile → API Tokens → Create Token → Create Custom Token**) with these **Account** permissions:
    - D1: Edit
    - Cloudflare Pages: Edit
    - Access: Apps and Policies: Edit
    - Access: Organizations, Identity Providers, and Groups: Edit
    - Account Settings: Read
-2. Run:
+2. In this GitHub repo, go to **Settings → Secrets and variables → Actions → New repository secret** and add:
+   - `CLOUDFLARE_API_TOKEN`: the token
+   - `ALLOWED_EMAIL`: the email that's allowed to sign in
+   - `ACCESS_TEAM_NAME` (optional): only needed if you've never used Zero Trust. Pick any short name; your login page becomes `<name>.cloudflareaccess.com`.
+3. Go to **Actions → Deploy to Cloudflare → Run workflow**.
 
-```bash
-npm install
-CLOUDFLARE_API_TOKEN=<token> npm run setup -- you@example.com
-# first time using Zero Trust on this account? add ACCESS_TEAM_NAME=<pick-a-name>
-```
+The workflow (`scripts/setup-cloudflare.mjs`) creates the D1 database and tables, the Pages project, the one-time-PIN login, and an Access application that only allows your email. It saves your email as an encrypted Pages secret and deploys. It's safe to re-run. The non-secret IDs it generates are committed back to `wrangler.toml`.
 
-The script creates the D1 database and its tables, the Pages project, the Zero Trust login (one-time PIN emailed to you) and an Access application that only allows your email. It then writes the IDs into `wrangler.toml` and deploys the site. It's safe to re-run, and it reuses anything that already exists. Commit the updated `wrangler.toml` afterwards.
+You can run the same script locally instead: `CLOUDFLARE_API_TOKEN=<token> npm run setup -- you@example.com`.
 
 ## Deploy manually (Cloudflare dashboard, about 15 minutes)
 
@@ -75,10 +77,9 @@ Edit `wrangler.toml`:
 [vars]
 ACCESS_TEAM_DOMAIN = "<team>.cloudflareaccess.com"
 ACCESS_AUD = "<the AUD tag>"
-ALLOWED_EMAILS = "you@example.com"   # optional second lock
 ```
 
-Commit and push. Pages redeploys automatically. Visit your site, enter the code emailed to you, and you're in.
+Optionally add `ALLOWED_EMAILS` (your email) as an encrypted variable in the Pages project settings as a second lock. Commit and push. Pages redeploys automatically. Visit your site, enter the code emailed to you, and you're in.
 
 > Pages reads the D1 binding and variables from `wrangler.toml`, so you don't set them in the dashboard. None of these values are secrets.
 

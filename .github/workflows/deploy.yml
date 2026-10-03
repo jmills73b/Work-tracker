@@ -1,0 +1,63 @@
+name: Deploy to Cloudflare
+
+# Runs on every push to main, or manually from the Actions tab.
+# Needs two repository secrets: CLOUDFLARE_API_TOKEN and ALLOWED_EMAIL.
+# Optional secret ACCESS_TEAM_NAME is only used if Zero Trust was never set up.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      ALLOWED_EMAIL: ${{ secrets.ALLOWED_EMAIL }}
+      ACCESS_TEAM_NAME: ${{ secrets.ACCESS_TEAM_NAME }}
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - name: Check secrets
+        id: secrets
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$ALLOWED_EMAIL" ]; then
+            echo "::notice::Skipping deploy: add the CLOUDFLARE_API_TOKEN and ALLOWED_EMAIL repository secrets first."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.secrets.outputs.ready == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.secrets.outputs.ready == 'true'
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        if: steps.secrets.outputs.ready == 'true'
+        run: npm ci
+
+      - name: Set up Cloudflare and deploy
+        if: steps.secrets.outputs.ready == 'true'
+        run: npm run setup
+
+      - name: Save generated Cloudflare IDs to the repo
+        if: steps.secrets.outputs.ready == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add wrangler.toml
+          if ! git diff --cached --quiet; then
+            git commit -m "Save Cloudflare IDs from setup [skip ci]"
+            git push
+          fi
