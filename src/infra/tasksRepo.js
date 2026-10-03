@@ -2,7 +2,8 @@ import { planTaskChanges } from '../domain/taskChanges.js';
 
 const TASK_COLUMNS = `
   t.id, t.title, t.description, t.status, t.priority, t.target_date,
-  t.category, t.created_at, t.updated_at, t.completed_at,
+  t.team_id, (SELECT tm.name FROM teams tm WHERE tm.id = t.team_id) AS team_name,
+  t.created_at, t.updated_at, t.completed_at,
   (SELECT COUNT(*) FROM subtasks s WHERE s.task_id = t.id) AS subtask_total,
   (SELECT COUNT(*) FROM subtasks s WHERE s.task_id = t.id AND s.done = 1) AS subtask_done,
   (SELECT u.note FROM task_updates u WHERE u.task_id = t.id AND u.kind = 'note'
@@ -62,10 +63,10 @@ export async function createTask(env, userId, t, at) {
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO tasks (id, user_id, title, description, status, priority, target_date,
-                          category, created_at, updated_at, completed_at)
+                          team_id, created_at, updated_at, completed_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(id, userId, t.title, t.description, t.status, t.priority, t.target_date,
-      t.category, at, at, t.status === 'done' ? at : null),
+      t.team_id, at, at, t.status === 'done' ? at : null),
     insertUpdate(env, { userId, taskId: id, kind: 'change', note: 'Task created', at }),
     ...(t.subtasks || []).map((st, position) => insertSubtask(env, { userId, taskId: id, ...st, position, at })),
   ]);
@@ -74,8 +75,8 @@ export async function createTask(env, userId, t, at) {
 
 // Statements for an UPDATE plus change-log lines; [] when nothing actually changed.
 // Column names come from validateTask's whitelist and planTaskChanges, never from input.
-export function changeStatements(env, userId, existing, fields, at) {
-  const { changes, log } = planTaskChanges(existing, fields, at);
+export function changeStatements(env, userId, existing, fields, at, options) {
+  const { changes, log } = planTaskChanges(existing, fields, at, options);
   const keys = Object.keys(changes);
   if (!keys.length) return [];
   return [

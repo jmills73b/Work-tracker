@@ -3,7 +3,8 @@ import { templateFromTask } from '../domain/templates.js';
 export async function listTemplates(env, userId) {
   const [templates, subtasks] = await Promise.all([
     env.DB.prepare(
-      'SELECT id, name, title, description, priority, category, created_at FROM templates WHERE user_id = ? ORDER BY name COLLATE NOCASE',
+      `SELECT tp.id, tp.name, tp.title, tp.description, tp.priority, tp.team_id, tp.created_at
+       FROM templates tp WHERE tp.user_id = ? ORDER BY tp.name COLLATE NOCASE`,
     ).bind(userId).all(),
     env.DB.prepare(
       'SELECT template_id, title, offset_days FROM template_subtasks WHERE user_id = ? ORDER BY template_id, position',
@@ -23,9 +24,9 @@ export async function createTemplateFromTask(env, userId, name, task, subtasks, 
   const id = crypto.randomUUID();
   await env.DB.batch([
     env.DB.prepare(
-      `INSERT INTO templates (id, user_id, name, title, description, priority, category, created_at)
+      `INSERT INTO templates (id, user_id, name, title, description, priority, team_id, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).bind(id, userId, name, t.title, t.description, t.priority, t.category, at),
+    ).bind(id, userId, name, t.title, t.description, t.priority, t.team_id, at),
     ...t.subtasks.map((st, position) => env.DB.prepare(
       `INSERT INTO template_subtasks (id, template_id, user_id, title, position, offset_days)
        VALUES (?, ?, ?, ?, ?, ?)`,

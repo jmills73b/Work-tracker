@@ -1,6 +1,7 @@
 import { statusAfterSubtaskChange } from '../domain/taskChanges.js';
 import { validateSubtaskCreate, validateSubtaskPatch, validateTask, validateUpdate } from '../domain/taskValidation.js';
 import * as tasksRepo from '../infra/tasksRepo.js';
+import { findTeam } from '../infra/teamsRepo.js';
 import { json } from './respond.js';
 
 const now = () => new Date().toISOString();
@@ -14,7 +15,8 @@ export async function list(env, user) {
 export async function create(request, env, user) {
   const { value, error } = validateTask(await request.json());
   if (error) return bad(error);
-  const t = { description: '', status: 'todo', priority: 'medium', target_date: null, category: '', subtasks: [], ...value };
+  if (value.team_id != null && !(await findTeam(env, value.team_id))) return bad('Unknown team');
+  const t = { description: '', status: 'todo', priority: 'medium', target_date: null, team_id: null, subtasks: [], ...value };
   const id = await tasksRepo.createTask(env, user.id, t, now());
   return json(await tasksRepo.taskDetail(env, user.id, id), 201);
 }
@@ -29,7 +31,11 @@ export async function patch(request, env, user, id) {
   if (error) return bad(error);
   const existing = await tasksRepo.getTask(env, user.id, id);
   if (!existing) return notFound();
-  const stmts = tasksRepo.changeStatements(env, user.id, existing, value, now());
+  const team = value.team_id != null ? await findTeam(env, value.team_id) : null;
+  if (value.team_id != null && !team) return bad('Unknown team');
+  const stmts = tasksRepo.changeStatements(env, user.id, existing, value, now(), {
+    teamName: (tid) => (tid === existing.team_id ? existing.team_name : team?.name) ?? `team ${tid}`,
+  });
   if (stmts.length) await env.DB.batch(stmts);
   return json(await tasksRepo.taskDetail(env, user.id, id));
 }

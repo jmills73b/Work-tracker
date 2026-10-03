@@ -3,6 +3,7 @@ import * as auth from './http/auth.js';
 import { json, redirect, text, withSecurityHeaders } from './http/respond.js';
 import * as push from './http/push.js';
 import * as tasks from './http/tasks.js';
+import * as teams from './http/teams.js';
 import * as templates from './http/templates.js';
 import { getSessionUser } from './infra/auth.js';
 import { runDigests } from './reminders.js';
@@ -76,6 +77,14 @@ export async function route(request, env) {
 
 async function api(request, env, user, method, path) {
   if (path === '/api/auth/password' && method === 'POST') return auth.changePassword(request, env, user);
+
+  if (path === '/api/teams' && method === 'GET') return teams.get(env);
+  if (path === '/api/admin/teams' && method === 'POST') return teams.create(request, env);
+  const adminTeam = path.match(/^\/api\/admin\/teams\/([^/]+)$/);
+  if (adminTeam) {
+    if (method === 'PATCH') return teams.rename(request, env, adminTeam[1]);
+    if (method === 'DELETE') return teams.remove(env, adminTeam[1]);
+  }
 
   if (path === '/api/admin/invites') {
     if (method === 'GET') return admin.listInvites(env, user);

@@ -44,6 +44,7 @@
           <button type="button" role="menuitem" id="reminders-btn">Reminders</button>
           <button type="button" role="menuitem" id="templates-btn">Templates</button>
           <button type="button" role="menuitem" id="change-password-btn">Change password</button>
+          <button type="button" role="menuitem" id="teams-btn" hidden>Teams</button>
           <button type="button" role="menuitem" id="invite-btn" hidden>Invite someone</button>
           <button type="button" role="menuitem" id="sign-out-btn">Sign out</button>
         </div>
@@ -79,6 +80,9 @@
           <button type="button" class="chip-btn" data-status="done">Done</button>
           <button type="button" class="chip-btn" data-status="all">All</button>
         </div>
+        <select id="team-filter" class="select" aria-label="Filter by team">
+          <option value="all">All teams</option>
+        </select>
         <select id="priority-filter" class="select" aria-label="Filter by priority">
           <option value="all">All priorities</option>
           <option value="urgent">Urgent</option>
@@ -143,8 +147,10 @@
             <input name="target_date" type="date" class="input">
           </label>
           <label class="field">
-            <span>Category</span>
-            <input name="category" class="input" list="categories" maxlength="60" placeholder="e.g. Client X">
+            <span>Team</span>
+            <select name="team_id" class="select input">
+              <option value="">No team</option>
+            </select>
           </label>
         </div>
 
@@ -188,7 +194,6 @@
         </section>
       </div>
     </form>
-    <datalist id="categories"></datalist>
   </aside>
 
   <dialog class="dialog" id="password-dialog" aria-labelledby="password-title">
@@ -219,7 +224,7 @@
     <form id="quick-form" autocomplete="off">
       <input id="quick-input" class="input quick-input" placeholder="e.g. Board deck fri !high #Leadership" maxlength="300" enterkeyhint="done" aria-label="Quick add a task" aria-describedby="quick-help">
       <div class="quick-preview" id="quick-preview" aria-live="polite"></div>
-      <p class="hint" id="quick-help">Dates: today, tomorrow, fri, next mon, 12 Oct, 12/10, in 3 days, eow · Priority: !urgent !high !low · Category: #Name</p>
+      <p class="hint" id="quick-help">Dates: today, tomorrow, fri, next mon, 12 Oct, 12/10, in 3 days, eow · Priority: !urgent !high !low · Team: #RDH</p>
       <div class="dialog-actions">
         <button type="button" class="btn ghost" id="quick-details">Add details…</button>
         <button type="submit" class="btn primary" id="quick-submit">Add task</button>
@@ -256,6 +261,22 @@
       <p class="muted" id="templates-empty">No templates yet.</p>
       <div class="dialog-actions">
         <button type="button" class="btn" id="templates-close">Done</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="dialog" id="teams-dialog" aria-labelledby="teams-title">
+    <div class="dialog-body">
+      <h2 id="teams-title">Teams</h2>
+      <p class="hint">Teams are shared by everyone. Rename one by editing its name. Removing a team moves its tasks to "No team".</p>
+      <ul class="team-list" id="team-list"></ul>
+      <form class="team-add" id="team-add-form" autocomplete="off">
+        <input class="input" name="name" maxlength="40" placeholder="New team name" aria-label="New team name" required>
+        <button type="submit" class="btn primary">Add team</button>
+      </form>
+      <p class="form-error" id="teams-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn" id="teams-close">Done</button>
       </div>
     </div>
   </dialog>

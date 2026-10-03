@@ -131,9 +131,21 @@ describe('parseQuickAdd', () => {
   const SAT = new Date(2026, 9, 3, 15);
   const MON = new Date(2026, 9, 5, 9);
 
-  it('picks out a weekday, a priority and a category, leaving the title', () => {
-    expect(parseQuickAdd('Board deck fri !high #Leadership', SAT))
-      .toEqual({ title: 'Board deck', target_date: '2026-10-09', priority: 'high', category: 'Leadership' });
+  const TEAMS = [{ id: 1, name: 'Dev Ops' }, { id: 2, name: 'RDH' }, { id: 3, name: 'GDS' }];
+
+  it('picks out a weekday, a priority and a team, leaving the title', () => {
+    expect(parseQuickAdd('Board deck fri !high #RDH', SAT, TEAMS))
+      .toEqual({ title: 'Board deck', target_date: '2026-10-09', priority: 'high', team_id: 2, team_name: 'RDH' });
+  });
+
+  it('finds a team however its name is typed', () => {
+    for (const tag of ['#DevOps', '#devops', '#Dev_Ops', '#dev-ops']) {
+      expect(parseQuickAdd(`Patch servers ${tag}`, SAT, TEAMS)).toMatchObject({ title: 'Patch servers', team_id: 1 });
+    }
+  });
+
+  it('leaves a #word that names no team in the title, so the preview shows it was not understood', () => {
+    expect(parseQuickAdd('Plan #Finance', SAT, TEAMS)).toMatchObject({ title: 'Plan #Finance', team_id: null });
   });
 
   it('reads numeric dates as day/month, the UK way', () => {
@@ -183,7 +195,7 @@ describe('parseQuickAdd', () => {
     expect(parseQuickAdd('tomorrow !high', SAT).title).toBe('');
   });
 
-  it('turns underscores in a category into spaces', () => {
-    expect(parseQuickAdd('Plan #Team_Events', SAT).category).toBe('Team Events');
+  it('ignores #words when there are no teams at all', () => {
+    expect(parseQuickAdd('Plan #RDH', SAT)).toMatchObject({ title: 'Plan #RDH', team_id: null });
   });
 });

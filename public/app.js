@@ -34,6 +34,8 @@
     view: store.get('wt.view', 'list'),
     status: store.get('wt.status', 'active'),
     priority: 'all',
+    team: store.get('wt.team', 'all'), // 'all', 'none', or a team id as a string
+    teams: [],
     sort: store.get('wt.sort', 'due'),
     q: '',
     current: null, // task open in the drawer (null = creating a new one)
@@ -204,9 +206,10 @@
     const sort = SORTS[state.sort] || byDue;
     return state.tasks
       .filter((t) => {
+        if (!inTeamFilter(t)) return false;
         if (state.priority !== 'all' && t.priority !== state.priority) return false;
         if (state.view === 'list' && !statusOk(t)) return false;
-        if (q && !`${t.title}\n${t.description}\n${t.category}\n${t.last_note || ''}`.toLowerCase().includes(q)) return false;
+        if (q && !`${t.title}\n${t.description}\n${t.team_name || ''}\n${t.last_note || ''}`.toLowerCase().includes(q)) return false;
         return true;
       })
       .sort((a, b) => (a.status === 'done') - (b.status === 'done') || sort(a, b));
@@ -225,11 +228,17 @@
     if (state.view === 'board') renderBoard(root, tasks);
     else if (!tasks.length) root.append(emptyState(false));
     else renderList(root, tasks);
-    renderCategories();
+  }
+
+  // The team filter narrows everything on the page, the summary tiles included.
+  function inTeamFilter(t) {
+    if (state.team === 'all') return true;
+    if (state.team === 'none') return t.team_id == null;
+    return String(t.team_id) === state.team;
   }
 
   function renderStats() {
-    const t = state.tasks;
+    const t = state.tasks.filter(inTeamFilter);
     const stats = [
       { key: 'active', label: 'Active', value: t.filter(isActive).length, s: 'todo' },
       { key: 'in_progress', label: 'In progress', value: t.filter((x) => x.status === 'in_progress').length, s: 'in_progress' },
@@ -257,11 +266,6 @@
     for (const b of document.querySelectorAll('#status-filter button')) b.setAttribute('aria-pressed', String(b.dataset.status === state.status));
     $('#priority-filter').value = state.priority;
     $('#sort').value = state.sort;
-  }
-
-  function renderCategories() {
-    const cats = [...new Set(state.tasks.map((t) => t.category).filter(Boolean))].sort();
-    $('#categories').replaceChildren(...cats.map((c) => h('option', { value: c })));
   }
 
   const statusPill = (s) => h('span', { class: `pill status-${s}`, text: STATUS[s] });
@@ -315,7 +319,7 @@
         (t.priority === 'urgent' || t.priority === 'high') && h('span', { class: `prio-badge prio-${t.priority}`, text: PRIORITY[t.priority] }),
         h('span', { class: 'text', text: t.title })),
       h('span', { class: 'row-sub' },
-        t.category && h('span', { class: 'tag', text: t.category }),
+        t.team_name && h('span', { class: 'tag', text: t.team_name }),
         t.last_note && h('span', { class: 'last-note', text: t.last_note }))),
     statusPill(t.status),
     subtaskChip(t),
@@ -361,7 +365,7 @@
     },
     h('div', { class: 'card-top' },
       h('span', { class: `prio-badge prio-${t.priority}`, text: PRIORITY[t.priority] }),
-      t.category && h('span', { class: 'tag', text: t.category })),
+      t.team_name && h('span', { class: 'tag', text: t.team_name })),
     h('div', { class: 'card-title', text: t.title }),
     cardSubtasks(t),
     t.last_note && h('div', { class: 'card-note', text: t.last_note }),
@@ -530,13 +534,13 @@
   }
 
   function fillForm(task) {
-    const t = task || { title: '', description: '', status: 'todo', priority: 'medium', target_date: '', category: '' };
+    const t = task || { title: '', description: '', status: 'todo', priority: 'medium', target_date: '', team_id: newTaskTeam() };
     field('title').value = t.title;
     field('description').value = t.description;
     field('status').value = t.status;
     field('priority').value = t.priority;
     field('target_date').value = t.target_date || '';
-    field('category').value = t.category;
+    field('team_id').value = t.team_id == null ? '' : String(t.team_id);
     requestAnimationFrame(() => { autoGrow(field('title')); autoGrow(field('description')); });
     setDirty(false);
   }
@@ -548,7 +552,7 @@
       status: field('status').value,
       priority: field('priority').value,
       target_date: field('target_date').value || null,
-      category: field('category').value.trim(),
+      team_id: field('team_id').value ? Number(field('team_id').value) : null,
     };
   }
 
@@ -865,8 +869,11 @@
     return thisYear < qaPlusDays(today, 0) ? qaIso(today.getFullYear() + 1, m, d) : thisYear;
   }
 
-  function parseQuickAdd(text, today = new Date()) {
-    const out = { title: '', target_date: null, priority: null, category: null };
+  // `teams` is [{ id, name }]: "#RDH", "#devops" or "#Dev_Ops" pick a team; a #word that
+  // names no team is left in the title, where the preview shows it wasn't understood.
+  function parseQuickAdd(text, today = new Date(), teams = []) {
+    const out = { title: '', target_date: null, priority: null, team_id: null, team_name: null };
+    const qaKey = (name) => String(name).toLowerCase().replace(/[\s_-]+/g, '');
     let rest = ` ${String(text).replace(/\s+/g, ' ')} `;
     const take = (re, fn) => {
       rest = rest.replace(re, (...m) => {
@@ -888,8 +895,11 @@
       return true;
     });
     take(/\s#([\p{L}\p{N}_-]+)(?=\s)/u, (_, c) => {
-      if (out.category) return false;
-      out.category = c.replace(/_/g, ' ');
+      if (out.team_id) return false;
+      const team = teams.find((tm) => qaKey(tm.name) === qaKey(c));
+      if (!team) return false;
+      out.team_id = team.id;
+      out.team_name = team.name;
       return true;
     });
 
@@ -942,7 +952,7 @@
   }
 
   function renderQuickPreview() {
-    const p = parseQuickAdd($('#quick-input').value);
+    const p = parseQuickAdd($('#quick-input').value, new Date(), state.teams);
     const parts = [];
     if (p.title) parts.push(h('span', { class: 'qp-title', text: p.title }));
     if (p.target_date) {
@@ -951,20 +961,20 @@
       parts.push(h('span', { class: `date-chip ${due.cls || 'set'}` }, icon('calendar', 13), h('span', { text: words })));
     }
     if (p.priority) parts.push(h('span', { class: `prio-badge prio-${p.priority}`, text: PRIORITY[p.priority] }));
-    if (p.category) parts.push(h('span', { class: 'tag', text: p.category }));
-    $('#quick-preview').replaceChildren(...(parts.length ? parts : [h('span', { class: 'qp-empty', text: 'Type a task; dates, !priority and #category are picked out as you go.' })]));
+    if (p.team_name) parts.push(h('span', { class: 'tag', text: p.team_name }));
+    $('#quick-preview').replaceChildren(...(parts.length ? parts : [h('span', { class: 'qp-empty', text: 'Type a task; dates, !priority and #team are picked out as you go.' })]));
     $('#quick-submit').disabled = !p.title;
     return p;
   }
 
   async function submitQuickAdd(e) {
     e.preventDefault();
-    const p = parseQuickAdd($('#quick-input').value);
+    const p = parseQuickAdd($('#quick-input').value, new Date(), state.teams);
     if (!p.title) return;
     const body = { title: p.title };
     if (p.target_date) body.target_date = p.target_date;
     if (p.priority) body.priority = p.priority;
-    if (p.category) body.category = p.category;
+    if (p.team_id) body.team_id = p.team_id;
     const btn = $('#quick-submit');
     btn.disabled = true;
     try {
@@ -982,13 +992,13 @@
 
   // Hand what was typed to the full form, for a description, subtasks or a template.
   function quickToDetails() {
-    const p = parseQuickAdd($('#quick-input').value);
+    const p = parseQuickAdd($('#quick-input').value, new Date(), state.teams);
     $('#quick-dialog').close();
     openNew();
     if (p.title) field('title').value = p.title;
     if (p.target_date) field('target_date').value = p.target_date;
     if (p.priority) field('priority').value = p.priority;
-    if (p.category) field('category').value = p.category;
+    if (p.team_id) field('team_id').value = String(p.team_id);
     requestAnimationFrame(() => autoGrow(field('title')));
     if (p.title) setDirty(true);
   }
@@ -1136,6 +1146,90 @@
     }
   }
 
+  /* ---------- Teams ---------- */
+
+  // A new task starts on the team being filtered to, so it doesn't vanish from view.
+  const newTaskTeam = () => (/^\d+$/.test(state.team) ? Number(state.team) : null);
+
+  function setTeams(teams) {
+    state.teams = teams;
+    if (/^\d+$/.test(state.team) && !teams.some((t) => String(t.id) === state.team)) {
+      state.team = 'all';
+      store.set('wt.team', 'all');
+    }
+    const options = () => teams.map((t) => h('option', { value: String(t.id), text: t.name }));
+    $('#team-filter').replaceChildren(
+      h('option', { value: 'all', text: 'All teams' }),
+      h('option', { value: 'none', text: 'No team' }),
+      ...options());
+    $('#team-filter').value = state.team;
+    const pick = field('team_id');
+    const current = pick.value;
+    pick.replaceChildren(h('option', { value: '', text: 'No team' }), ...options());
+    pick.value = teams.some((t) => String(t.id) === current) ? current : '';
+    renderTeamList();
+  }
+
+  async function refreshTeams() {
+    setTeams((await api('/teams')).teams);
+  }
+
+  function renderTeamList() {
+    $('#team-list').replaceChildren(...state.teams.map((t) => {
+      const name = h('input', { class: 'input team-name', value: t.name, maxlength: '40', 'aria-label': `Rename ${t.name}` });
+      name.addEventListener('change', () => renameTeam(t, name));
+      name.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); name.blur(); } });
+      return h('li', {},
+        name,
+        h('span', { class: 'muted team-count', text: `${t.task_count} task${t.task_count === 1 ? '' : 's'}` }),
+        h('button', {
+          type: 'button', class: 'icon-btn', title: `Remove ${t.name}`, 'aria-label': `Remove team ${t.name}`,
+          onclick: () => removeTeam(t),
+        }, icon('trash', 15)));
+    }));
+  }
+
+  async function teamsCall(path, options, done) {
+    $('#teams-error').hidden = true;
+    try {
+      setTeams((await api(path, options)).teams);
+      await reloadTasks();
+      if (done) toast(done);
+    } catch (err) {
+      if (!err.silent) showFormError($('#teams-error'), err.message);
+      renderTeamList();
+    }
+  }
+
+  async function reloadTasks() {
+    state.tasks = (await api('/tasks')).tasks;
+    render();
+  }
+
+  async function addTeam(e) {
+    e.preventDefault();
+    const input = e.currentTarget.elements.namedItem('name');
+    const name = input.value.trim();
+    if (!name) return;
+    await teamsCall('/admin/teams', { method: 'POST', body: { name } }, `Added ${name}`);
+    if ($('#teams-error').hidden) input.value = '';
+  }
+
+  function renameTeam(team, input) {
+    const name = input.value.trim();
+    if (!name || name === team.name) {
+      input.value = team.name;
+      return;
+    }
+    teamsCall(`/admin/teams/${team.id}`, { method: 'PATCH', body: { name } }, `Renamed to ${name}`);
+  }
+
+  function removeTeam(team) {
+    const n = team.task_count;
+    if (!confirm(`Remove ${team.name}?${n ? ` Its ${n} task${n === 1 ? '' : 's'} will move to "No team".` : ''}`)) return;
+    teamsCall(`/admin/teams/${team.id}`, { method: 'DELETE' }, `Removed ${team.name}`);
+  }
+
   /* ---------- Templates ---------- */
 
   // The date `days` after an ISO date (negative = before); null when either is missing.
@@ -1165,7 +1259,7 @@
     field('title').value = t.title;
     field('description').value = t.description;
     field('priority').value = t.priority;
-    field('category').value = t.category;
+    field('team_id').value = t.team_id == null ? '' : String(t.team_id);
     autoGrow(field('title'));
     autoGrow(field('description'));
     const drafts = t.subtasks.map((st, i) => ({ id: `draft-${i}-${Date.now()}`, title: st.title, done: 0, offset_days: st.offset_days, target_date: null }));
@@ -1269,6 +1363,7 @@
     });
 
     $('#search').addEventListener('input', (e) => { state.q = e.target.value; render(); });
+    $('#team-filter').addEventListener('change', (e) => { state.team = e.target.value; store.set('wt.team', state.team); render(); });
     $('#priority-filter').addEventListener('change', (e) => { state.priority = e.target.value; render(); });
     $('#sort').addEventListener('change', (e) => { state.sort = e.target.value; store.set('wt.sort', state.sort); render(); });
     $('#status-filter').addEventListener('click', (e) => {
@@ -1309,11 +1404,13 @@
     $('#user-avatar').textContent = user.name.slice(0, 1);
     $('#user-button').title = `Signed in as ${user.email}`;
     $('#invite-btn').hidden = !user.is_admin;
+    $('#teams-btn').hidden = !user.is_admin;
   }
 
   async function loadApp() {
-    const [me, list, tpl] = await Promise.all([api('/auth/me'), api('/tasks'), api('/templates')]);
+    const [me, list, tpl, teams] = await Promise.all([api('/auth/me'), api('/tasks'), api('/templates'), api('/teams')]);
     setUser(me);
+    setTeams(teams.teams);
     state.tasks = list.tasks;
     state.templates = tpl.templates;
     renderTemplatePicker();
@@ -1409,6 +1506,14 @@
     $('#sign-out-btn').addEventListener('click', signOut);
     $('#change-password-btn').addEventListener('click', openPasswordDialog);
     $('#reminders-btn').addEventListener('click', openReminders);
+    $('#teams-btn').addEventListener('click', async () => {
+      closeMenu();
+      $('#teams-error').hidden = true;
+      $('#teams-dialog').showModal();
+      await refreshTeams().catch((err) => { if (!err.silent) showFormError($('#teams-error'), err.message); });
+    });
+    $('#teams-close').addEventListener('click', () => $('#teams-dialog').close());
+    $('#team-add-form').addEventListener('submit', addTeam);
     $('#reminders-close').addEventListener('click', () => $('#reminders-dialog').close());
     $('#reminders-form').addEventListener('submit', saveReminderSettings);
     $('#push-enable').addEventListener('click', enablePush);

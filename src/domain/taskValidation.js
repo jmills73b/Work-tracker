@@ -40,10 +40,11 @@ export function validateTask(input, { partial = false } = {}) {
     if (r.error) return r;
     out.description = r.value;
   }
-  if ('category' in input) {
-    const r = text(input.category ?? '', 'Category', 60);
-    if (r.error) return r;
-    out.category = r.value;
+  if ('team_id' in input) {
+    // null = no team; otherwise a team's id (the handler checks it exists).
+    const v = input.team_id;
+    if (v !== null && !(Number.isInteger(v) && v > 0)) return { error: 'Invalid team' };
+    out.team_id = v;
   }
   if ('status' in input) {
     if (!validStatus(input.status)) return { error: 'Invalid status' };

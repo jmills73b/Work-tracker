@@ -17,7 +17,7 @@ export function templateFromTask(task, subtasks) {
     title: task.title,
     description: task.description || '',
     priority: task.priority,
-    category: task.category || '',
+    team_id: task.team_id ?? null,
     subtasks: subtasks.map((st) => ({ title: st.title, offset_days: dayOffset(task.target_date, st.target_date) })),
   };
 }

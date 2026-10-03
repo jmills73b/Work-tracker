@@ -22,10 +22,10 @@ describe('dayOffset', () => {
 });
 
 describe('templateFromTask', () => {
-  const task = { title: 'Board pack', description: 'Q4', priority: 'high', category: 'Leadership', target_date: '2026-11-20', status: 'done', id: 'x' };
+  const task = { title: 'Board pack', description: 'Q4', priority: 'high', team_id: 2, target_date: '2026-11-20', status: 'done', id: 'x' };
 
   it('keeps the parts worth reusing and drops status, ids and dates', () => {
-    expect(templateFromTask(task, [])).toEqual({ title: 'Board pack', description: 'Q4', priority: 'high', category: 'Leadership', subtasks: [] });
+    expect(templateFromTask(task, [])).toEqual({ title: 'Board pack', description: 'Q4', priority: 'high', team_id: 2, subtasks: [] });
   });
 
   it('turns subtask dates into offsets from the task date, keeping order', () => {
