@@ -41,6 +41,7 @@
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
         </button>
         <div class="menu" id="user-dropdown" role="menu" hidden>
+          <button type="button" role="menuitem" id="insights-btn">Insights</button>
           <button type="button" role="menuitem" id="reminders-btn">Reminders</button>
           <button type="button" role="menuitem" id="templates-btn">Templates</button>
           <button type="button" role="menuitem" id="change-password-btn">Change password</button>
@@ -82,6 +83,7 @@
           <button type="button" class="chip-btn" data-status="in_progress">In progress</button>
           <button type="button" class="chip-btn" data-status="blocked">Blocked</button>
           <button type="button" class="chip-btn" data-status="done">Done</button>
+          <button type="button" class="chip-btn" data-status="archived" title="Done more than 30 days ago">Archive</button>
           <button type="button" class="chip-btn" data-status="all">All</button>
         </div>
         <select id="team-filter" class="select" aria-label="Filter by team">
@@ -259,6 +261,17 @@
         <button type="submit" class="btn primary" id="quick-submit">Add task</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog class="dialog insights-dialog" id="insights-dialog" aria-labelledby="insights-title">
+    <div class="dialog-body">
+      <h2 id="insights-title">Insights</h2>
+      <p class="hint" id="insights-scope"></p>
+      <div id="insights-body"></div>
+      <div class="dialog-actions">
+        <button type="button" class="btn" id="insights-close">Close</button>
+      </div>
+    </div>
   </dialog>
 
   <dialog class="dialog" id="reminders-dialog" aria-labelledby="reminders-title">

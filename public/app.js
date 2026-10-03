@@ -180,6 +180,10 @@
   }
 
   const isActive = (t) => t.status !== 'done';
+  // Done more than 30 days ago: out of the way (List's Archive chip, or All), still searchable.
+  const ARCHIVE_DAYS = 30;
+  const isArchived = (t, today = new Date()) =>
+    t.status === 'done' && Boolean(t.completed_at) && dayNumber(today) - dayNumber(new Date(t.completed_at)) >= ARCHIVE_DAYS;
   const isOverdue = (t, today = new Date()) => isActive(t) && Boolean(t.target_date) && daysUntil(t.target_date, today) < 0;
   const isDueThisWeek = (t, today = new Date()) => {
     if (!isActive(t) || !t.target_date) return false;
@@ -218,6 +222,60 @@
     return groups;
   }
 
+  // Insights, from the tasks already loaded. Weeks start on Monday; "on time" means done
+  // on or before the target date (in local time).
+  const INSIGHT_WEEKS = 12;
+
+  function computeInsights(tasks, today = new Date()) {
+    const todayN = dayNumber(today);
+    const localIso = (n) => new Date(n * 86400000).toISOString().slice(0, 10);
+    const mondayN = (n) => n - ((new Date(n * 86400000).getUTCDay() + 6) % 7);
+    const thisMonday = mondayN(todayN);
+    const weeks = Array.from({ length: INSIGHT_WEEKS }, (_, i) => ({ start: localIso(thisMonday - 7 * (INSIGHT_WEEKS - 1 - i)), count: 0 }));
+    const teams = new Map();
+    const team = (t) => {
+      const key = t.team_name || 'No team';
+      if (!teams.has(key)) teams.set(key, { name: key, open: 0, overdue: 0, done90: 0, dated: 0, onTime: 0 });
+      return teams.get(key);
+    };
+    let done30 = 0;
+    let dated = 0;
+    let onTime = 0;
+    let slipTotal = 0;
+    let late = 0;
+    let overdue = 0;
+    for (const t of tasks) {
+      if (t.status !== 'done') {
+        team(t).open += 1;
+        if (isOverdue(t, today)) { overdue += 1; team(t).overdue += 1; }
+        continue;
+      }
+      if (!t.completed_at) continue;
+      const doneN = dayNumber(new Date(t.completed_at));
+      const age = todayN - doneN;
+      if (age < 30) done30 += 1;
+      const w = Math.floor((thisMonday - mondayN(doneN)) / 7);
+      if (w >= 0 && w < INSIGHT_WEEKS) weeks[INSIGHT_WEEKS - 1 - w].count += 1;
+      if (age >= 90) continue;
+      team(t).done90 += 1;
+      if (!t.target_date) continue;
+      const [y, m, d] = t.target_date.split('-').map(Number);
+      const slip = doneN - Date.UTC(y, m - 1, d) / 86400000; // days late; 0 or less is on time
+      dated += 1;
+      team(t).dated += 1;
+      if (slip <= 0) { onTime += 1; team(t).onTime += 1; } else { late += 1; slipTotal += slip; }
+    }
+    return {
+      done30,
+      overdue,
+      onTimeRate: dated ? onTime / dated : null,
+      dated,
+      avgSlip: late ? slipTotal / late : null,
+      weeks,
+      teams: [...teams.values()].sort((a, b) => b.open - a.open || b.done90 - a.done90 || a.name.localeCompare(b.name)),
+    };
+  }
+
   const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
   function relTime(iso) {
     const secs = (new Date(iso).getTime() - Date.now()) / 1000;
@@ -249,7 +307,9 @@
     all: () => true,
     overdue: (t) => isOverdue(t),
     week: (t) => isDueThisWeek(t),
-    done30: (t) => t.status === 'done' && t.completed_at && Date.now() - new Date(t.completed_at) < 30 * 86400000,
+    done30: (t) => t.status === 'done' && !isArchived(t),
+    done: (t) => t.status === 'done' && !isArchived(t),
+    archived: (t) => isArchived(t),
   };
 
   function visibleTasks() {
@@ -261,6 +321,7 @@
         if (!inTeamFilter(t)) return false;
         if (state.priority !== 'all' && t.priority !== state.priority) return false;
         if (state.view === 'list' && !statusOk(t)) return false;
+        if (state.view !== 'list' && isArchived(t)) return false;
         if (q && !`${t.title}\n${t.description}\n${t.team_name || ''}\n${t.last_note || ''}`.toLowerCase().includes(q)) return false;
         return true;
       })
@@ -426,7 +487,8 @@
       if (s === 'done') items.sort((a, b) => (b.completed_at || '').localeCompare(a.completed_at || ''));
       const col = h('section', { class: `column status-${s}`, 'aria-label': STATUS[s] },
         h('header', { class: 'column-head' }, h('span', { class: 'dot' }), STATUS[s], h('span', { class: 'count', text: items.length })),
-        h('div', { class: 'column-body' }, items.length ? items.map(taskCard) : h('div', { class: 'column-empty', text: 'Drag tasks here' })));
+        h('div', { class: 'column-body' }, items.length ? items.map(taskCard) : h('div', { class: 'column-empty', text: 'Drag tasks here' }),
+          s === 'done' && archivedLink()));
       col.addEventListener('dragover', (e) => { e.preventDefault(); col.classList.add('drop'); });
       col.addEventListener('dragleave', (e) => { if (!col.contains(e.relatedTarget)) col.classList.remove('drop'); });
       col.addEventListener('drop', (e) => {
@@ -439,6 +501,14 @@
       board.append(col);
     }
     root.append(board);
+  }
+
+  function archivedLink() {
+    const n = state.tasks.filter((t) => inTeamFilter(t) && isArchived(t)).length;
+    if (!n) return null;
+    return h('button', {
+      type: 'button', class: 'archive-link', onclick: () => { state.view = 'list'; store.set('wt.view', 'list'); setFilter('archived'); },
+    }, `${n} done more than ${ARCHIVE_DAYS} days ago`);
   }
 
   function taskCard(t) {
@@ -501,7 +571,10 @@
         : 'Try a different filter or search term.' }),
       firstRun
         ? h('button', { type: 'button', class: 'btn primary', onclick: openQuickAdd }, icon('plus'), 'New task')
-        : h('button', { type: 'button', class: 'btn', onclick: clearFilters }, 'Clear filters'));
+        : h('div', { class: 'empty-actions' },
+          // A search that finds nothing among active tasks may be about an older one.
+          state.q.trim() && state.status !== 'all' && h('button', { type: 'button', class: 'btn primary', onclick: () => setFilter('all') }, 'Search all tasks'),
+          h('button', { type: 'button', class: 'btn', onclick: clearFilters }, 'Clear filters')));
   }
 
   function skeleton() {
@@ -519,7 +592,7 @@
   function setFilter(status, fromStats = false) {
     state.status = status;
     if (fromStats && state.view !== 'list') state.view = 'list';
-    if (STATUS[status] || status === 'active' || status === 'all') store.set('wt.status', status);
+    if (STATUS[status] || ['active', 'all', 'archived'].includes(status)) store.set('wt.status', status);
     render();
   }
 
@@ -1150,6 +1223,56 @@
     } finally {
       if (run === subAssist.run) btn.classList.remove('is-busy');
     }
+  }
+
+  /* ---------- Insights ---------- */
+
+  const weekLabel = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+
+  function renderInsights() {
+    const teamName = state.team === 'all' ? null : state.team === 'none' ? 'No team' : state.teams.find((t) => String(t.id) === state.team)?.name;
+    $('#insights-scope').textContent = teamName ? `For ${teamName} (the team filter applies).` : 'All teams. The team filter narrows this.';
+    const ins = computeInsights(state.tasks.filter(inTeamFilter));
+    const pct = (x) => `${Math.round(x * 100)}%`;
+    const tiles = [
+      { label: 'Done, last 30 days', value: String(ins.done30) },
+      { label: 'On time, last 90 days', value: ins.onTimeRate == null ? '–' : pct(ins.onTimeRate), note: ins.dated ? `of ${ins.dated} with a target date` : 'no dated tasks done yet' },
+      { label: 'Average slip when late', value: ins.avgSlip == null ? '–' : `${ins.avgSlip.toFixed(1)}d`, note: ins.avgSlip == null ? 'nothing finished late' : 'days past the target' },
+      { label: 'Overdue now', value: String(ins.overdue), alert: ins.overdue > 0 },
+    ];
+    const max = Math.max(1, ...ins.weeks.map((w) => w.count));
+    const last = ins.weeks.length - 1;
+    const chart = h('div', { class: 'ins-chart', role: 'img', 'aria-label': `Tasks done per week, last ${ins.weeks.length} weeks` },
+      ins.weeks.map((w, i) => h('div', { class: 'ins-col' },
+        h('button', {
+          type: 'button',
+          class: 'ins-bar-hit',
+          'aria-label': `Week of ${weekLabel(w.start)}: ${w.count} done`,
+        },
+        h('span', { class: 'ins-tip', text: `Week of ${weekLabel(w.start)} · ${w.count} done` }),
+        i === last && h('span', { class: 'ins-cap', text: String(w.count) }),
+        h('span', { class: `ins-bar${w.count ? '' : ' is-zero'}`, vars: { '--h': `${(w.count / max) * 100}%` } })),
+        h('span', { class: 'ins-x', text: i % 3 === last % 3 ? weekLabel(w.start) : '' }))));
+    const table = (head, rows) => h('table', { class: 'ins-table' },
+      h('thead', null, h('tr', null, head.map((c, i) => h('th', { scope: 'col', class: i ? 'num' : null, text: c })))),
+      h('tbody', null, rows.map((r) => h('tr', null, r.map((c, i) => (i ? h('td', { class: 'num', text: c }) : h('th', { scope: 'row', text: c })))))));
+    $('#insights-body').replaceChildren(
+      h('div', { class: 'ins-tiles' }, tiles.map((t) => h('div', { class: `ins-tile${t.alert ? ' alert' : ''}` },
+        h('span', { class: 'stat-label', text: t.label }),
+        h('span', { class: 'stat-value', text: t.value }),
+        t.note && h('span', { class: 'ins-note', text: t.note })))),
+      h('section', { class: 'ins-section' },
+        h('h3', { text: 'Done per week' }),
+        chart,
+        h('details', { class: 'ins-details' }, h('summary', { text: 'Show as a table' }),
+          table(['Week of', 'Done'], ins.weeks.map((w) => [weekLabel(w.start), String(w.count)])))),
+      h('section', { class: 'ins-section' },
+        h('h3', { text: 'By team' }),
+        ins.teams.length
+          ? table(['Team', 'Open', 'Overdue', 'Done (90d)', 'On time'], ins.teams.map((t) => [
+            t.name, String(t.open), String(t.overdue), String(t.done90), t.dated ? pct(t.onTime / t.dated) : '–',
+          ]))
+          : h('p', { class: 'hint', text: 'No tasks yet.' })));
   }
 
   /* ---------- Quick add parser ---------- */
@@ -1849,6 +1972,8 @@
     $('#push-enable').addEventListener('click', enablePush);
     $('#push-disable').addEventListener('click', disablePush);
     $('#push-test').addEventListener('click', sendTestPush);
+    $('#insights-btn').addEventListener('click', () => { closeMenu(); renderInsights(); $('#insights-dialog').showModal(); });
+    $('#insights-close').addEventListener('click', () => $('#insights-dialog').close());
     $('#templates-btn').addEventListener('click', () => { closeMenu(); renderTemplateList(); $('#templates-dialog').showModal(); });
     $('#templates-close').addEventListener('click', () => $('#templates-dialog').close());
     $('#invite-btn').addEventListener('click', openInviteDialog);

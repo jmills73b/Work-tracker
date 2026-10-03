@@ -944,3 +944,47 @@ input[type="date"].input::-webkit-date-and-time-value { text-align: left; margin
 /* ---------- Recurring tasks ---------- */
 .repeat-mark { display: inline-flex; flex: none; align-items: center; color: var(--text-3); }
 .card-top .repeat-mark { margin-left: auto; }
+
+/* ---------- Archive & insights ---------- */
+.archive-link { display: block; width: 100%; margin-top: 8px; padding: 8px; border: 1px dashed var(--border-strong); border-radius: 10px; background: transparent; color: var(--text-2); font-size: 12.5px; cursor: pointer; }
+.archive-link:hover { background: var(--surface-hover); color: var(--text); }
+.empty-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+
+.insights-dialog { width: min(760px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); }
+.insights-dialog .dialog-body { gap: 18px; }
+.ins-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.ins-tile { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.ins-tile .stat-label { color: var(--text-2); font-size: 12.5px; }
+.ins-tile .stat-value { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.ins-tile.alert .stat-value { color: var(--red); }
+.ins-note { color: var(--text-3); font-size: 11.5px; }
+.ins-section h3 { margin: 0 0 10px; color: var(--text-2); font-size: 13px; font-weight: 650; }
+.ins-chart { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); align-items: end; gap: 2px; height: 170px; padding-top: 18px; border-bottom: 1px solid var(--border-strong); }
+.ins-col { display: flex; flex-direction: column; align-items: center; height: 100%; min-width: 0; }
+.ins-bar-hit { position: relative; display: flex; flex: 1; flex-direction: column; justify-content: flex-end; align-items: center; width: 100%; padding: 0; border: 0; background: transparent; cursor: default; }
+.ins-bar { display: block; width: min(24px, 70%); height: var(--h); min-height: 2px; border-radius: 4px 4px 0 0; background: var(--accent); }
+.ins-bar.is-zero { background: var(--border-strong); }
+.ins-bar-hit:hover .ins-bar, .ins-bar-hit:focus-visible .ins-bar { background: var(--accent-hover); }
+.ins-cap { margin-bottom: 4px; color: var(--text); font-size: 12px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.ins-tip { position: absolute; bottom: calc(100% + 4px); left: 50%; z-index: 2; padding: 5px 8px; border-radius: 7px; background: var(--text); color: var(--bg); font-size: 12px; white-space: nowrap; transform: translateX(-50%); opacity: 0; pointer-events: none; transition: opacity 0.1s; }
+.ins-col:first-child .ins-tip { left: 0; transform: none; }
+.ins-col:last-child .ins-tip { left: auto; right: 0; transform: none; }
+.ins-bar-hit:hover .ins-tip, .ins-bar-hit:focus-visible .ins-tip { opacity: 1; }
+.ins-x { height: 0; overflow: visible; margin-top: 6px; color: var(--text-3); font-size: 11px; white-space: nowrap; }
+.ins-chart { margin-bottom: 22px; }
+.ins-details summary { color: var(--accent); font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.ins-table { width: 100%; margin-top: 8px; border-collapse: collapse; font-size: 13px; }
+.ins-table th, .ins-table td { padding: 7px 8px; border-bottom: 1px solid var(--border); text-align: left; }
+.ins-table thead th { color: var(--text-3); font-size: 11.5px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.04em; }
+.ins-table tbody th { font-weight: 550; }
+.ins-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 600px) {
+  .ins-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ins-tile .stat-value { font-size: 22px; }
+  .ins-table th, .ins-table td { padding: 7px 4px; }
+}
+.ins-col:last-child .ins-x { align-self: flex-end; }
+.ins-col:first-child .ins-x { align-self: flex-start; }
+.ins-section { margin-top: 6px; }
+.ins-details { margin-top: 2px; }
+.insights-dialog { overflow-x: hidden; }

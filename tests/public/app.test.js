@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { sliceFunctions } from '../helpers/slice.js';
 
 const dates = sliceFunctions('public/app.js', '  const dayNumber =', '  const rtf = new Intl', [
-  'daysUntil', 'dueInfo', 'isOverdue', 'isDueThisWeek', 'planWeek',
+  'daysUntil', 'dueInfo', 'isOverdue', 'isDueThisWeek', 'planWeek', 'isArchived', 'computeInsights',
 ]);
 
 const sorting = sliceFunctions('public/app.js', '  const byDue =', '  const STATUS_FILTERS', ['SORTS'], {
@@ -235,5 +235,62 @@ describe('planWeek (the Today view)', () => {
       task({ id: 'high', priority: 'high', target_date: '2026-10-03' }),
     ];
     expect(ids(dates.planWeek(tasks, TODAY).today)).toEqual(['urgent/s', 'high', 'low']);
+  });
+});
+
+describe('isArchived', () => {
+  const at = (y, m, d) => new Date(y, m - 1, d, 12).toISOString();
+  it('is a done task finished 30 or more calendar days ago', () => {
+    expect(dates.isArchived(task({ status: 'done', completed_at: at(2026, 9, 3) }), TODAY)).toBe(true);
+    expect(dates.isArchived(task({ status: 'done', completed_at: at(2026, 9, 4) }), TODAY)).toBe(false);
+    expect(dates.isArchived(task({ status: 'todo', completed_at: at(2026, 1, 1) }), TODAY)).toBe(false);
+  });
+});
+
+describe('computeInsights', () => {
+  // TODAY is Saturday 3 Oct 2026; its week starts Monday 28 Sep.
+  const doneOn = (y, m, d, over = {}) => task({ status: 'done', completed_at: new Date(y, m - 1, d, 15).toISOString(), ...over });
+
+  it('counts done per Monday-start week, oldest first, for the last 12 weeks', () => {
+    const ins = dates.computeInsights([doneOn(2026, 9, 28), doneOn(2026, 10, 3), doneOn(2026, 9, 27), doneOn(2026, 7, 1)], TODAY);
+    expect(ins.weeks).toHaveLength(12);
+    expect(ins.weeks.at(-1)).toEqual({ start: '2026-09-28', count: 2 });
+    expect(ins.weeks.at(-2)).toEqual({ start: '2026-09-21', count: 1 });
+    expect(ins.weeks[0].start).toBe('2026-07-13');
+    expect(ins.weeks.reduce((n, w) => n + w.count, 0)).toBe(3);
+  });
+
+  it('works out on-time rate and average slip from dated tasks done in the last 90 days', () => {
+    const ins = dates.computeInsights([
+      doneOn(2026, 10, 1, { target_date: '2026-10-01' }), // on the day: on time
+      doneOn(2026, 9, 20, { target_date: '2026-09-25' }), // early
+      doneOn(2026, 9, 30, { target_date: '2026-09-26' }), // 4 days late
+      doneOn(2026, 9, 10, { target_date: '2026-09-08' }), // 2 days late
+      doneOn(2026, 9, 10), // no date: not counted for on-time
+      doneOn(2026, 5, 1, { target_date: '2026-04-01' }), // older than 90 days: ignored
+    ], TODAY);
+    expect(ins.dated).toBe(4);
+    expect(ins.onTimeRate).toBe(0.5);
+    expect(ins.avgSlip).toBe(3);
+    expect(ins.done30).toBe(5); // all but the May one are within 30 days
+  });
+
+  it('gives nulls rather than 0% when there is nothing to measure', () => {
+    const ins = dates.computeInsights([task({ target_date: '2026-09-01' })], TODAY);
+    expect([ins.onTimeRate, ins.avgSlip, ins.overdue]).toEqual([null, null, 1]);
+  });
+
+  it('breaks down open, overdue, done and on time by team, busiest first', () => {
+    const ins = dates.computeInsights([
+      task({ team_name: 'RDH', target_date: '2026-09-01' }),
+      task({ team_name: 'RDH' }),
+      task({ team_name: null }),
+      doneOn(2026, 9, 30, { team_name: 'GDS', target_date: '2026-10-02' }),
+    ], TODAY);
+    expect(ins.teams).toEqual([
+      { name: 'RDH', open: 2, overdue: 1, done90: 0, dated: 0, onTime: 0 },
+      { name: 'No team', open: 1, overdue: 0, done90: 0, dated: 0, onTime: 0 },
+      { name: 'GDS', open: 0, overdue: 0, done90: 1, dated: 1, onTime: 1 },
+    ]);
   });
 });
