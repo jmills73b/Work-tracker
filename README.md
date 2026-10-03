@@ -16,6 +16,7 @@ A clean, private tracker for your own tasks. Capture a task, set its priority an
 - **Task assistant**: tap ✨ beside a title for a clearer, more concise wording of the title and description, shown side by side with yours. Replace or keep the original. Each subtask has its own ✨ too, which rewords that one step using the task for context. **Tidy** turns a rough progress note into a clear update before you post it. Uses Claude Haiku (about 0.15p a suggestion, capped at 30 an hour)
 - **Task drawer** for editing and posting updates. Status, priority, date and subtask changes are logged automatically
 - Search, filters, sorting, light/dark mode. Laid out for iPhone and iPad as well as desktop, and can be added to the Home Screen
+- **Face ID / Touch ID sign-in** with passkeys (name menu → Face ID & passkeys). Email and password still work.
 - Email and password sign-in. The first account is the admin and can invite others; everyone's tasks are private
 - Shortcuts: `N` quick add, `/` search, `Esc` close, `Ctrl/⌘+Enter` save or post
 

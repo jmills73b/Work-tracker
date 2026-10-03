@@ -1,6 +1,7 @@
 import * as admin from './http/admin.js';
 import * as assist from './http/assist.js';
 import * as auth from './http/auth.js';
+import * as passkeys from './http/passkeys.js';
 import { json, redirect, text, withSecurityHeaders } from './http/respond.js';
 import * as push from './http/push.js';
 import * as tasks from './http/tasks.js';
@@ -12,7 +13,7 @@ import { runDigests } from './reminders.js';
 // Reachable without a session. Everything else is denied by default: a new page is
 // protected the moment it exists, with no list to remember to update.
 export const PUBLIC_PATHS = new Set([
-  '/login', '/login.html', '/login.js', '/app.css', '/favicon.svg',
+  '/login', '/login.html', '/login.js', '/passkeys.js', '/app.css', '/favicon.svg',
   '/manifest.webmanifest', '/icon-180.png', '/icon-512.png', '/robots.txt',
   // The service worker holds no data; keeping it public lets the browser update it even
   // after the session cookie has expired.
@@ -55,6 +56,8 @@ export async function route(request, env) {
   // 1. Public auth routes, before any session lookup: there is no cookie yet.
   if (method === 'POST' && path === '/api/auth/register') return auth.register(request, env);
   if (method === 'POST' && path === '/api/auth/login') return auth.login(request, env);
+  if (method === 'POST' && path === '/api/auth/passkey/options') return passkeys.loginOptions(request, env);
+  if (method === 'POST' && path === '/api/auth/passkey/login') return passkeys.login(request, env);
 
   // 2. Resolve the session once; everything below reuses it.
   const user = await getSessionUser(env, request);
@@ -78,6 +81,11 @@ export async function route(request, env) {
 
 async function api(request, env, user, method, path) {
   if (path === '/api/auth/password' && method === 'POST') return auth.changePassword(request, env, user);
+  if (path === '/api/auth/passkeys' && method === 'GET') return passkeys.list(env, user);
+  if (path === '/api/auth/passkeys/options' && method === 'POST') return passkeys.registerOptions(request, env, user);
+  if (path === '/api/auth/passkeys' && method === 'POST') return passkeys.register(request, env, user);
+  const pk = path.match(/^\/api\/auth\/passkeys\/([^/]+)$/);
+  if (pk && pk[1] !== 'options' && method === 'DELETE') return passkeys.remove(env, user, pk[1]);
 
   if (path === '/api/assist' && method === 'POST') return assist.suggest(request, env, user);
   if (path === '/api/assist/subtask' && method === 'POST') return assist.suggestSubtask(request, env, user);

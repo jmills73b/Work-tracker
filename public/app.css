@@ -988,3 +988,14 @@ input[type="date"].input::-webkit-date-and-time-value { text-align: left; margin
 .ins-section { margin-top: 6px; }
 .ins-details { margin-top: 2px; }
 .insights-dialog { overflow-x: hidden; }
+
+/* ---------- Passkeys ---------- */
+.passkey-signin { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.passkey-signin .or { align-self: center; color: var(--text-3); font-size: 12px; }
+.passkey-signin .btn { gap: 8px; }
+.passkey-list { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.passkey-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; }
+.passkey-icon { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--green-soft); color: var(--green); flex: none; }
+.passkey-text { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.passkey-text .hint { margin: 0; font-size: 12px; }
+.btn svg { flex: none; }

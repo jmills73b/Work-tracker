@@ -15,6 +15,7 @@
   <meta name="theme-color" content="#f6f6f8" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0f0f13" media="(prefers-color-scheme: dark)">
   <link rel="stylesheet" href="/app.css">
+  <script src="/passkeys.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
@@ -44,6 +45,7 @@
           <button type="button" role="menuitem" id="insights-btn">Insights</button>
           <button type="button" role="menuitem" id="reminders-btn">Reminders</button>
           <button type="button" role="menuitem" id="templates-btn">Templates</button>
+          <button type="button" role="menuitem" id="passkeys-btn">Face ID &amp; passkeys</button>
           <button type="button" role="menuitem" id="change-password-btn">Change password</button>
           <button type="button" role="menuitem" id="teams-btn" hidden>Teams</button>
           <button type="button" role="menuitem" id="invite-btn" hidden>Invite someone</button>
@@ -259,6 +261,24 @@
       <div class="dialog-actions">
         <button type="button" class="btn ghost" id="quick-details">Add details…</button>
         <button type="submit" class="btn primary" id="quick-submit">Add task</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="dialog" id="passkeys-dialog" aria-labelledby="passkeys-title">
+    <form id="passkeys-form" autocomplete="off">
+      <h2 id="passkeys-title">Face ID &amp; passkeys</h2>
+      <p class="hint">Sign in with Face ID or Touch ID instead of typing your password. The key stays on your device; this site only keeps a public key that can't be used to sign in anywhere else. Your password still works.</p>
+      <ul class="passkey-list" id="passkey-list"></ul>
+      <p class="hint" id="passkeys-unsupported" hidden>This browser can't use passkeys.</p>
+      <label class="field" id="passkey-password-field">
+        <span>Your password, to add this device</span>
+        <input class="input" type="password" name="password" autocomplete="current-password">
+      </label>
+      <p class="form-error" id="passkeys-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn ghost" id="passkeys-close">Close</button>
+        <button type="submit" class="btn primary" id="passkey-add">Add this device</button>
       </div>
     </form>
   </dialog>

@@ -1225,6 +1225,85 @@
     }
   }
 
+  /* ---------- Face ID & passkeys ---------- */
+
+  function passkeyError(message) {
+    const el = $('#passkeys-error');
+    el.textContent = message || '';
+    el.hidden = !message;
+  }
+
+  async function openPasskeys() {
+    const supported = Boolean(window.Passkeys?.supported());
+    $('#passkeys-unsupported').hidden = supported;
+    $('#passkey-password-field').hidden = !supported;
+    $('#passkey-add').hidden = !supported;
+    $('#passkeys-form').elements.password.value = '';
+    passkeyError('');
+    $('#passkey-list').replaceChildren(h('li', { class: 'hint', text: 'Loading…' }));
+    $('#passkeys-dialog').showModal();
+    try {
+      renderPasskeys((await api('/auth/passkeys')).passkeys);
+    } catch (err) {
+      if (!err.silent) passkeyError(err.message);
+    }
+  }
+
+  function renderPasskeys(list) {
+    $('#passkey-list').replaceChildren(...(list.length ? list.map((p) => h('li', { class: 'passkey-item' },
+      h('span', { class: 'passkey-icon' }, icon('check', 14)),
+      h('span', { class: 'passkey-text' },
+        h('strong', { text: p.name }),
+        h('span', { class: 'hint', text: `Added ${shortDate(p.created_at)}${p.last_used_at ? ` · last used ${relTime(p.last_used_at)}` : ' · not used yet'}` })),
+      h('button', {
+        type: 'button', class: 'btn ghost danger', text: 'Remove', 'aria-label': `Remove passkey: ${p.name}`,
+        onclick: () => removePasskey(p),
+      }))) : [h('li', { class: 'hint', text: 'No passkeys yet. Add this device to sign in with Face ID or Touch ID.' })]));
+  }
+
+  async function addPasskey(e) {
+    e.preventDefault();
+    passkeyError('');
+    const form = $('#passkeys-form');
+    const password = form.elements.password.value;
+    if (!password) {
+      passkeyError('Enter your password to add this device');
+      form.elements.password.focus();
+      return;
+    }
+    const btn = $('#passkey-add');
+    btn.disabled = true;
+    try {
+      const { challenge_id: challengeId, options } = await api('/auth/passkeys/options', { method: 'POST', body: { password } });
+      form.elements.password.value = '';
+      let response;
+      try {
+        response = await window.Passkeys.create(options);
+      } catch (err) {
+        if (err?.name === 'InvalidStateError') passkeyError('This device already has a passkey here.');
+        else if (!window.Passkeys.cancelled(err)) passkeyError("This device couldn't create a passkey.");
+        return;
+      }
+      const { passkeys } = await api('/auth/passkeys', { method: 'POST', body: { challenge_id: challengeId, response, name: window.Passkeys.deviceName() } });
+      renderPasskeys(passkeys);
+      toast('Passkey added. Next time, sign in with Face ID.');
+    } catch (err) {
+      if (!err.silent) passkeyError(err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function removePasskey(p) {
+    if (!confirm(`Remove the passkey "${p.name}"? That device will need your password to sign in.`)) return;
+    try {
+      await api(`/auth/passkeys/${encodeURIComponent(p.id)}`, { method: 'DELETE' });
+      renderPasskeys((await api('/auth/passkeys')).passkeys);
+    } catch (err) {
+      if (!err.silent) passkeyError(err.message);
+    }
+  }
+
   /* ---------- Insights ---------- */
 
   const weekLabel = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
@@ -1972,6 +2051,9 @@
     $('#push-enable').addEventListener('click', enablePush);
     $('#push-disable').addEventListener('click', disablePush);
     $('#push-test').addEventListener('click', sendTestPush);
+    $('#passkeys-btn').addEventListener('click', () => { closeMenu(); openPasskeys(); });
+    $('#passkeys-close').addEventListener('click', () => $('#passkeys-dialog').close());
+    $('#passkeys-form').addEventListener('submit', addPasskey);
     $('#insights-btn').addEventListener('click', () => { closeMenu(); renderInsights(); $('#insights-dialog').showModal(); });
     $('#insights-close').addEventListener('click', () => $('#insights-dialog').close());
     $('#templates-btn').addEventListener('click', () => { closeMenu(); renderTemplateList(); $('#templates-dialog').showModal(); });
