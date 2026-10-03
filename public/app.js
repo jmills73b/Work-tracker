@@ -31,7 +31,7 @@
   const state = {
     tasks: [],
     loaded: false,
-    view: store.get('wt.view', 'list'),
+    view: store.get('wt.view', 'today'), // 'today', 'list' or 'board'
     status: store.get('wt.status', 'active'),
     priority: 'all',
     team: store.get('wt.team', 'all'), // 'all', 'none', or a team id as a string
@@ -186,6 +186,37 @@
     return n >= 0 && n <= 7;
   };
 
+  // The Today view: open tasks and open subtasks (of open tasks) by when they're due.
+  // Each item is { kind, task, subtask?, date }; a subtask is listed in its own right, so
+  // a step due today shows even when its task is due next month.
+  const TODAY_GROUPS = [
+    { key: 'overdue', label: 'Overdue', test: (n) => n < 0 },
+    { key: 'today', label: 'Today', test: (n) => n === 0 },
+    { key: 'week', label: 'Next 7 days', test: (n) => n >= 1 && n <= 7 },
+  ];
+
+  function planWeek(tasks, today = new Date()) {
+    const groups = Object.fromEntries(TODAY_GROUPS.map((g) => [g.key, []]));
+    const place = (item) => {
+      const n = daysUntil(item.date, today);
+      const group = TODAY_GROUPS.find((g) => g.test(n));
+      if (group) groups[group.key].push(item);
+    };
+    for (const task of tasks) {
+      if (!isActive(task)) continue;
+      if (task.target_date) place({ kind: 'task', task, date: task.target_date });
+      for (const subtask of task.subtasks || []) {
+        if (!subtask.done && subtask.target_date) place({ kind: 'subtask', task, subtask, date: subtask.target_date });
+      }
+    }
+    const rank = { urgent: 0, high: 1, medium: 2, low: 3 };
+    for (const list of Object.values(groups)) {
+      list.sort((a, b) => a.date.localeCompare(b.date) || rank[a.task.priority] - rank[b.task.priority]
+        || (a.kind === 'task' ? 0 : 1) - (b.kind === 'task' ? 0 : 1));
+    }
+    return groups;
+  }
+
   const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
   function relTime(iso) {
     const secs = (new Date(iso).getTime() - Date.now()) / 1000;
@@ -246,6 +277,7 @@
     if (!state.tasks.length) return root.append(emptyState(true));
     const tasks = visibleTasks();
     if (state.view === 'board') renderBoard(root, tasks);
+    else if (state.view === 'today') renderToday(root, tasks);
     else if (!tasks.length) root.append(emptyState(false));
     else renderList(root, tasks);
   }
@@ -282,6 +314,7 @@
 
   function renderToolbar() {
     document.body.classList.toggle('view-board', state.view === 'board');
+    document.body.classList.toggle('view-today', state.view === 'today');
     for (const b of document.querySelectorAll('#view-toggle button')) b.setAttribute('aria-pressed', String(b.dataset.view === state.view));
     for (const b of document.querySelectorAll('#status-filter button')) b.setAttribute('aria-pressed', String(b.dataset.status === state.status));
     $('#priority-filter').value = state.priority;
@@ -344,6 +377,44 @@
     statusPill(t.status),
     subtaskChip(t),
     dueLabel(t));
+  }
+
+  function renderToday(root, tasks) {
+    const groups = planWeek(tasks);
+    const sections = TODAY_GROUPS.filter((g) => groups[g.key].length).map((g) =>
+      h('section', { class: `today-group today-${g.key}`, 'aria-label': g.label },
+        h('h2', { class: 'today-head' }, g.label, h('span', { class: 'count', text: groups[g.key].length })),
+        h('div', { class: 'list', role: 'list' }, groups[g.key].map(todayRow))));
+    if (!sections.length) {
+      return root.append(h('div', { class: 'empty' },
+        h('span', { class: 'empty-icon' }, icon('check', 22)),
+        h('h2', { text: 'Nothing due in the next 7 days' }),
+        h('p', { text: 'Tasks and subtasks with a target date show up here when they are due soon or overdue.' }),
+        h('button', { type: 'button', class: 'btn', onclick: () => setView('list') }, 'See all tasks')));
+    }
+    root.append(h('div', { class: 'today' }, sections));
+  }
+
+  function todayRow(item) {
+    const { task: t, subtask: st } = item;
+    if (item.kind === 'task') return taskRow(t);
+    const due = dueInfo({ target_date: st.target_date, status: 'todo' });
+    return h('div', { class: `row is-subtask prio-${t.priority}`, role: 'listitem', onclick: () => openTask(t.id) },
+      h('button', {
+        type: 'button',
+        class: 'check sm',
+        title: 'Mark subtask as done',
+        'aria-label': `Mark done: ${st.title}`,
+        onclick: (e) => { e.stopPropagation(); toggleSubtaskOf(t.id, st.id); },
+      }, icon('check', 12)),
+      h('button', { type: 'button', class: 'row-main', 'aria-label': `Open ${t.title}` },
+        h('span', { class: 'row-title' }, h('span', { class: 'text', text: st.title })),
+        h('span', { class: 'row-sub' },
+          h('span', { class: 'parent-task' }, icon('subtasks', 13), h('span', { text: t.title })),
+          t.team_name && h('span', { class: 'tag', text: t.team_name }))),
+      h('span', { class: 'pill subtask-pill', text: 'Subtask' }),
+      h('span', { class: 'subtask-chip is-none', 'aria-hidden': 'true' }),
+      h('span', { class: `due ${due.cls}`, title: due.title, text: due.label }));
   }
 
   function renderBoard(root, tasks) {
@@ -435,6 +506,12 @@
   }
 
   /* ---------- Filters ---------- */
+
+  function setView(view) {
+    state.view = view;
+    store.set('wt.view', view);
+    render();
+  }
 
   function setFilter(status, fromStats = false) {
     state.status = status;
@@ -1534,10 +1611,7 @@
     });
     $('#view-toggle').addEventListener('click', (e) => {
       const b = e.target.closest('button[data-view]');
-      if (!b) return;
-      state.view = b.dataset.view;
-      store.set('wt.view', state.view);
-      render();
+      if (b) setView(b.dataset.view);
     });
 
     document.addEventListener('keydown', (e) => {

@@ -2,6 +2,7 @@
 
 A clean, private tracker for your own tasks. Capture a task, set its priority and target date, break it into subtasks, and keep a running log of updates.
 
+- **Today**: the home screen. What's overdue, due today and due in the next 7 days, with subtasks listed under their own dates
 - **List view** with priority stripes, status pills, and overdue / due-soon highlighting
 - **Board view**: drag cards between To do, In progress, Blocked and Done
 - **Summary tiles** (Active, In progress, Due this week, Overdue, Done in the last 30 days). Click a tile to filter by it

@@ -922,3 +922,15 @@ input[type="date"].input::-webkit-date-and-time-value { text-align: left; margin
 .subtask-suggest .assist-why { margin: 0; }
 .subtask-suggest .assist-actions .btn { height: 36px; }
 @media (pointer: coarse) { .sub-assist { width: 40px; height: 40px; } }
+
+/* ---------- Today view ---------- */
+.view-today .chips, .view-today #sort { display: none; }
+.today { display: flex; flex-direction: column; gap: 22px; }
+.today-head { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; color: var(--text-2); font-size: 13px; font-weight: 650; letter-spacing: 0.02em; text-transform: uppercase; }
+.today-head .count { padding: 1px 8px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); font-size: 12px; letter-spacing: 0; }
+.today-overdue .today-head { color: var(--red); }
+.today-overdue .today-head .count { background: var(--red-soft); color: var(--red); }
+.row.is-subtask > .check { width: 22px; height: 22px; justify-self: center; }
+.parent-task { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.parent-task span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.subtask-pill { background: var(--surface-2); color: var(--text-2); }

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { sliceFunctions } from '../helpers/slice.js';
 
 const dates = sliceFunctions('public/app.js', '  const dayNumber =', '  const rtf = new Intl', [
-  'daysUntil', 'dueInfo', 'isOverdue', 'isDueThisWeek',
+  'daysUntil', 'dueInfo', 'isOverdue', 'isDueThisWeek', 'planWeek',
 ]);
 
 const sorting = sliceFunctions('public/app.js', '  const byDue =', '  const STATUS_FILTERS', ['SORTS'], {
@@ -197,5 +197,43 @@ describe('parseQuickAdd', () => {
 
   it('ignores #words when there are no teams at all', () => {
     expect(parseQuickAdd('Plan #RDH', SAT)).toMatchObject({ title: 'Plan #RDH', team_id: null });
+  });
+});
+
+describe('planWeek (the Today view)', () => {
+  const ids = (items) => items.map((i) => (i.kind === 'task' ? i.task.id : `${i.task.id}/${i.subtask.id}`));
+
+  it('puts open tasks and open subtasks into overdue, today and the next 7 days', () => {
+    const tasks = [
+      task({ id: 'late', target_date: '2026-10-01' }),
+      task({ id: 'now', target_date: '2026-10-03' }),
+      task({ id: 'soon', target_date: '2026-10-10' }),
+      task({ id: 'later', target_date: '2026-10-11' }),
+      task({ id: 'undated' }),
+      task({ id: 'big', target_date: '2026-12-01', subtasks: [
+        { id: 's1', done: 0, target_date: '2026-10-03' },
+        { id: 's2', done: 1, target_date: '2026-10-03' },
+        { id: 's3', done: 0, target_date: null },
+        { id: 's4', done: 0, target_date: '2026-09-30' },
+      ] }),
+    ];
+    const g = dates.planWeek(tasks, TODAY);
+    expect(ids(g.overdue)).toEqual(['big/s4', 'late']);
+    expect(ids(g.today)).toEqual(['now', 'big/s1']);
+    expect(ids(g.week)).toEqual(['soon']);
+  });
+
+  it('leaves out done tasks and every subtask of a done task', () => {
+    const g = dates.planWeek([task({ id: 'd', status: 'done', target_date: '2026-10-03', subtasks: [{ id: 's', done: 0, target_date: '2026-10-03' }] })], TODAY);
+    expect([...g.overdue, ...g.today, ...g.week]).toEqual([]);
+  });
+
+  it('orders the same day by priority, then the task before its subtasks', () => {
+    const tasks = [
+      task({ id: 'low', priority: 'low', target_date: '2026-10-03' }),
+      task({ id: 'urgent', priority: 'urgent', target_date: '2026-10-05', subtasks: [{ id: 's', done: 0, target_date: '2026-10-03' }] }),
+      task({ id: 'high', priority: 'high', target_date: '2026-10-03' }),
+    ];
+    expect(ids(dates.planWeek(tasks, TODAY).today)).toEqual(['urgent/s', 'high', 'low']);
   });
 });
