@@ -106,9 +106,10 @@ test('a subtask gets its own suggestion in place, using the task for context; Us
   await page.locator('#quick-input').press('Enter');
   await page.locator('.row', { hasText: 'Fix RDH access' }).first().click();
   const drawer = page.locator('#drawer');
-  for (const t of ['Ask Sarah', 'ticket??']) {
+  for (const [i, t] of ['Ask Sarah', 'ticket??'].entries()) {
     await drawer.locator('#subtask-input').fill(t);
     await drawer.locator('#subtask-input').press('Enter');
+    await expect(drawer.locator('.subtask-title').nth(i)).toHaveValue(t);
   }
   const row = drawer.locator('.subtask').filter({ has: page.locator('.subtask-title[value="ticket??"]') });
   await row.getByRole('button', { name: 'Suggest clearer wording: ticket??' }).click();

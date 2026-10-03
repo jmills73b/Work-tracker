@@ -812,7 +812,8 @@
     btn.disabled = true;
     try {
       applyDetail(await api(subtaskPath(), { method: 'POST', body: { title } }));
-      input.value = '';
+      // Only clear what was sent: the next subtask may already be half typed.
+      if (input.value.trim() === title) input.value = '';
     } catch (err) {
       notify(err);
     } finally {

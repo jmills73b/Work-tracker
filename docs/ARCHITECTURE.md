@@ -143,6 +143,7 @@ Runs against `wrangler dev --local` and a freshly wiped local D1. It never uses 
 Specs, kept few:
 - `critical-path.spec.js`: sign in, create a task with draft subtasks, tick one, post an update, complete, sign out, gate, wrong password, sign back in.
 - `assistant.spec.js`: no button without a key; at iPhone 12 mini size, yours and the suggestion side by side, Escape closes only the sheet, Keep changes nothing, Replace fills the form and saves; the "already clear" answer; a subtask's in-place suggestion sends its task and siblings, and Use renames it and survives reopening. The two calls that need a key are stubbed in the browser; the Worker-side call is unit-tested with the real SDK against a fake API.
+- `subtasks.spec.js`: typing the next subtask while the last is still saving keeps what was typed (the add used to clear the box when the save returned).
 - `missing-data.spec.js`: the empty-account state, and a failed save showing its message (the bug class where `notify()` called itself and froze the page).
 
 ### Verification outside the suite
