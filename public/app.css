@@ -214,7 +214,6 @@ kbd {
 .search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); }
 .search input::-webkit-search-cancel-button { display: none; }
 .topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
-.user { color: var(--text-3); font-size: 13px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---------- Layout ---------- */
 .container { max-width: 1200px; margin: 0 auto; padding: 28px 24px 64px; }
@@ -537,6 +536,85 @@ kbd {
 .tl-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
 .timeline-empty { color: var(--text-3); font-size: 13px; }
 
+/* ---------- Sign in ---------- */
+body.logged-out .topbar, body.logged-out .container { display: none; }
+.login { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; }
+.login-card {
+  width: min(380px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 32px 28px 28px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-md);
+}
+.login-card h1 { margin: 6px 0 0; font-size: 22px; font-weight: 650; letter-spacing: -0.015em; }
+.login-sub { margin: -10px 0 6px; color: var(--text-3); }
+.brand-mark.lg { width: 44px; height: 44px; border-radius: 12px; }
+.btn.block { width: 100%; justify-content: center; height: 40px; margin-top: 4px; }
+.form-error { margin: 0; padding: 8px 11px; border-radius: 8px; background: var(--red-soft); color: var(--red); font-size: 13px; font-weight: 550; }
+.hint { margin: -4px 0 0; color: var(--text-3); font-size: 12.5px; }
+
+/* ---------- User menu ---------- */
+.user-menu { position: relative; }
+.user-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 8px 0 4px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-2);
+  font-weight: 550;
+}
+.user-button:hover, .user-button[aria-expanded="true"] { background: var(--surface-2); border-color: var(--border); }
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.user-name { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  min-width: 180px;
+  padding: 5px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  box-shadow: var(--shadow-lg);
+}
+.menu button { display: block; width: 100%; padding: 8px 10px; border: 0; border-radius: 7px; background: transparent; text-align: left; }
+.menu button:hover, .menu button:focus-visible { background: var(--surface-2); }
+
+/* ---------- Dialog ---------- */
+.dialog {
+  width: min(420px, calc(100vw - 32px));
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+}
+.dialog::backdrop { background: var(--scrim); }
+.dialog form { display: flex; flex-direction: column; gap: 14px; padding: 24px; }
+.dialog h2 { margin: 0 0 4px; font-size: 18px; font-weight: 650; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+
 /* ---------- Toasts ---------- */
 .toasts { position: fixed; left: 50%; bottom: 24px; z-index: 60; display: flex; flex-direction: column; align-items: center; gap: 8px; transform: translateX(-50%); pointer-events: none; }
 .toast {
@@ -556,7 +634,7 @@ kbd {
 /* ---------- Responsive ---------- */
 @media (max-width: 960px) {
   .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .user { display: none; }
+  .user-name { display: none; }
 }
 
 @media (max-width: 720px) {

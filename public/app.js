@@ -35,6 +35,7 @@
     q: '',
     current: null, // task open in the drawer (null = creating a new one)
     drawerOpen: false,
+    signedIn: false,
     dirty: false,
   };
 
@@ -96,13 +97,25 @@
         body: body === undefined ? undefined : JSON.stringify(body),
       });
     } catch {
-      throw new Error('Connection lost or session expired. Reload the page to sign in again.');
+      throw new Error('Connection problem. Check your internet and try again.');
     }
     const type = res.headers.get('Content-Type') || '';
-    if (!type.includes('application/json')) throw new Error('Session expired. Reload the page to sign in again.');
+    if (!type.includes('application/json')) throw new Error(`Unexpected response (${res.status}). Try reloading the page.`);
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+    if (!res.ok) {
+      const err = new Error(data.error || `Request failed (${res.status})`);
+      err.status = res.status;
+      if (res.status === 401 && path !== '/auth/login') {
+        err.silent = true;
+        showLogin();
+      }
+      throw err;
+    }
     return data;
+  }
+
+  function notify(err) {
+    if (!err.silent) notify(err);
   }
 
   /* ---------- Dates ---------- */
@@ -392,7 +405,7 @@
     } catch (err) {
       state.tasks[i] = before;
       render();
-      toast(err.message, 'error');
+      notify(err);
     }
   }
 
@@ -423,7 +436,7 @@
       const detail = await api(`/tasks/${encodeURIComponent(id)}`);
       if (state.current && state.current.id === id) applyDetail(detail);
     } catch (err) {
-      toast(err.message, 'error');
+      notify(err);
     }
   }
 
@@ -455,9 +468,9 @@
     });
   }
 
-  function closeDrawer() {
+  function closeDrawer(force = false) {
     if (!state.drawerOpen) return;
-    if (state.dirty && !confirm('Discard unsaved changes?')) return;
+    if (!force && state.dirty && !confirm('Discard unsaved changes?')) return;
     state.drawerOpen = false;
     state.current = null;
     setDirty(false);
@@ -553,7 +566,7 @@
         toast('Task created');
       }
     } catch (err) {
-      toast(err.message, 'error');
+      notify(err);
       setDirty(true);
     }
   }
@@ -569,7 +582,7 @@
       render();
       toast('Task deleted');
     } catch (err) {
-      toast(err.message, 'error');
+      notify(err);
     }
   }
 
@@ -598,7 +611,7 @@
       applyDetail(detail);
       toast('Update posted');
     } catch (err) {
-      toast(err.message, 'error');
+      notify(err);
     } finally {
       btn.disabled = false;
     }
@@ -610,7 +623,7 @@
     try {
       applyDetail(await api(`/tasks/${encodeURIComponent(task.id)}/updates/${encodeURIComponent(updateId)}`, { method: 'DELETE' }));
     } catch (err) {
-      toast(err.message, 'error');
+      notify(err);
     }
   }
 
@@ -635,8 +648,8 @@
   function bind() {
     $('#new-task').addEventListener('click', openNew);
     $('#theme-toggle').addEventListener('click', toggleTheme);
-    $('#close-drawer').addEventListener('click', closeDrawer);
-    $('#scrim').addEventListener('click', closeDrawer);
+    $('#close-drawer').addEventListener('click', () => closeDrawer());
+    $('#scrim').addEventListener('click', () => closeDrawer());
     $('#delete-btn').addEventListener('click', deleteTask);
     $('#post-update').addEventListener('click', postUpdate);
     form.addEventListener('submit', saveTask);
@@ -679,7 +692,7 @@
         return;
       }
       const t = e.target;
-      if (e.ctrlKey || e.metaKey || e.altKey || state.drawerOpen) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || state.drawerOpen || !state.signedIn || $('#password-dialog').open) return;
       if (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName)) return;
       if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openNew(); }
       if (e.key === '/') { e.preventDefault(); $('#search').focus(); }
@@ -693,18 +706,145 @@
     $('#update-progress').append(...progressOptions);
   }
 
+  /* ---------- Account ---------- */
+
+  function setUser(username) {
+    state.signedIn = true;
+    document.body.classList.remove('logged-out');
+    $('#login').hidden = true;
+    $('#user-menu').hidden = false;
+    $('#user-name').textContent = username;
+    $('#user-avatar').textContent = username.slice(0, 1);
+    $('#user-button').title = `Signed in as ${username}`;
+  }
+
+  function showLogin() {
+    if (!state.signedIn && !$('#login').hidden) return;
+    state.signedIn = false;
+    state.tasks = [];
+    state.loaded = false;
+    setDirty(false);
+    closeDrawer(true);
+    closeMenu();
+    if ($('#password-dialog').open) $('#password-dialog').close();
+    document.body.classList.add('logged-out');
+    $('#user-menu').hidden = true;
+    $('#login').hidden = false;
+    $('#login-error').hidden = true;
+    const form = $('#login-form');
+    form.elements.namedItem('password').value = '';
+    (form.elements.namedItem('username').value ? form.elements.namedItem('password') : form.elements.namedItem('username')).focus();
+  }
+
+  async function loadApp() {
+    const [me, list] = await Promise.all([api('/me'), api('/tasks')]);
+    setUser(me.username);
+    state.tasks = list.tasks;
+    state.loaded = true;
+    render();
+  }
+
+  async function signIn(e) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const username = form.elements.namedItem('username').value.trim();
+    const password = form.elements.namedItem('password').value;
+    const errorEl = $('#login-error');
+    if (!username || !password) {
+      errorEl.textContent = 'Enter your username and password.';
+      errorEl.hidden = false;
+      return;
+    }
+    const btn = $('#login-submit');
+    btn.disabled = true;
+    btn.textContent = 'Signing in…';
+    try {
+      await api('/auth/login', { method: 'POST', body: { username, password } });
+      form.elements.namedItem('password').value = '';
+      errorEl.hidden = true;
+      render();
+      await loadApp();
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.hidden = false;
+      form.elements.namedItem('password').select();
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Sign in';
+    }
+  }
+
+  async function signOut() {
+    closeMenu();
+    if (state.dirty && !confirm('Discard unsaved changes and sign out?')) return;
+    try {
+      await api('/auth/logout', { method: 'POST', body: {} });
+    } catch (err) {
+      if (!err.silent) return notify(err);
+    }
+    showLogin();
+  }
+
+  function toggleMenu(open) {
+    const menu = $('#user-dropdown');
+    const show = open ?? menu.hidden;
+    menu.hidden = !show;
+    $('#user-button').setAttribute('aria-expanded', String(show));
+    if (show) menu.querySelector('button').focus();
+  }
+  const closeMenu = () => toggleMenu(false);
+
+  function openPasswordDialog() {
+    closeMenu();
+    const form = $('#password-form');
+    form.reset();
+    $('#password-error').hidden = true;
+    $('#password-dialog').showModal();
+    form.elements.namedItem('current').focus();
+  }
+
+  async function changePassword(e) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const current = form.elements.namedItem('current').value;
+    const next = form.elements.namedItem('next').value;
+    const confirmValue = form.elements.namedItem('confirm').value;
+    const errorEl = $('#password-error');
+    const fail = (msg) => { errorEl.textContent = msg; errorEl.hidden = false; };
+    if (!current) return fail('Enter your current password.');
+    if (next.length < 10) return fail('New password must be at least 10 characters.');
+    if (next !== confirmValue) return fail("New passwords don't match.");
+    try {
+      await api('/auth/password', { method: 'POST', body: { current, next } });
+      $('#password-dialog').close();
+      toast('Password updated');
+    } catch (err) {
+      if (!err.silent) fail(err.message);
+    }
+  }
+
+  function bindAccount() {
+    $('#login-form').addEventListener('submit', signIn);
+    $('#user-button').addEventListener('click', (e) => { e.stopPropagation(); toggleMenu(); });
+    $('#sign-out-btn').addEventListener('click', signOut);
+    $('#change-password-btn').addEventListener('click', openPasswordDialog);
+    $('#password-form').addEventListener('submit', changePassword);
+    $('#password-cancel').addEventListener('click', () => $('#password-dialog').close());
+    document.addEventListener('click', (e) => { if (!e.target.closest('#user-menu')) closeMenu(); });
+    $('#user-dropdown').addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.stopPropagation(); closeMenu(); $('#user-button').focus(); }
+    });
+  }
+
   async function init() {
     applyTheme(store.get('wt.theme', ''));
     bind();
+    bindAccount();
     render();
     try {
-      const [me, list] = await Promise.all([api('/me'), api('/tasks')]);
-      $('#user').textContent = me.email;
-      $('#user').title = `Signed in as ${me.email}`;
-      state.tasks = list.tasks;
-      state.loaded = true;
-      render();
+      await loadApp();
     } catch (err) {
+      if (err.silent) return;
       $('#tasks').replaceChildren(h('div', { class: 'empty' },
         h('h2', { text: "Couldn't load your tasks" }),
         h('p', { text: err.message }),

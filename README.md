@@ -7,6 +7,7 @@ A clean, private tracker for your own tasks. Capture a task, set its priority, t
 - **Summary tiles** (Active, In progress, Due this week, Overdue, Done in the last 30 days). Click a tile to filter by it
 - **Task drawer** for editing details and posting progress updates. Status, progress, priority and date changes are logged to the timeline automatically
 - Search, priority filter, sorting, light/dark mode, works on mobile
+- Username and password sign-in, sign out, and change password
 - Shortcuts: `N` new task, `/` search, `Esc` close, `Ctrl/⌘+Enter` save or post
 
 ## Stack (all free tier)
@@ -15,100 +16,57 @@ A clean, private tracker for your own tasks. Capture a task, set its priority, t
 | --- | --- | --- |
 | Web app + API | Pages + Pages Functions | Unlimited static requests, 100k function requests/day |
 | Database | D1 (SQLite) | 5 GB, 5M row reads/day |
-| Login | Zero Trust / Access | Up to 50 users |
 
 No frameworks and no third-party scripts. The front end is plain HTML, CSS and JS in `public/`, and the API is in `functions/api/`.
 
 ## Security
 
-- **Cloudflare Access** puts a login screen in front of the whole site, so nobody reaches the page or the API without signing in. By default you sign in with a one-time code emailed to an address you've allowed.
-- **The API also checks the Access token itself** (`lib/auth.js`): it verifies the token's signature, issuer, audience and expiry. If Access is ever misconfigured, the API refuses every request instead of serving data.
-- **Each user only sees their own tasks.** Every query is filtered by the signed-in email.
-- **Cross-site request forgery protection:** changes are only accepted as JSON from the site's own origin.
+- **Passwords are never stored.** Only a salted PBKDF2-SHA256 hash is kept. The password is first mixed with a secret "pepper" (`AUTH_PEPPER`, an encrypted Pages secret kept outside the database), so even a copy of the database can't be cracked offline.
+- **Sessions:** a random 256-bit token sits in a cookie marked `__Host-`, `HttpOnly`, `Secure` and `SameSite=Strict`, so page scripts can't read it, it only travels over HTTPS, and other sites can't send it. The database stores only a hash of the token. Sessions end after 7 days of inactivity or 30 days in total. Changing your password signs out every other device.
+- **Brute-force protection:** 5 wrong passwords for an account, or 30 from one internet address, locks sign-in for 15 minutes. Unknown usernames take as long to reject as wrong passwords, and give the same message.
+- **Each user only sees their own tasks.** Every query is filtered by the signed-in user.
+- **Cross-site request forgery protection:** besides the `SameSite=Strict` cookie, changes are only accepted as JSON from the site's own origin.
 - **Strict security headers** (`public/_headers`): a Content Security Policy that only allows the site's own files, HSTS, no framing, `nosniff`, and no-referrer. User text is only ever written to the page as plain text, never as HTML.
 - **Server-side validation** of every field, and parameterised SQL everywhere.
+- **HTTPS and DDoS protection** come from Cloudflare.
 
-## Deploy with GitHub Actions (recommended)
+## Deploy with GitHub Actions
 
-Every push to `main` sets up Cloudflare (first time only) and deploys the site automatically.
+Every push to `main` deploys the site automatically. The first run also creates everything on Cloudflare.
 
-1. Create a Cloudflare API token (**My Profile → API Tokens → Create Token → Create Custom Token**) with these **Account** permissions:
+1. **Create a Cloudflare API token.** Go to **My Profile → API Tokens → Create Token → Create Custom Token** and add these **Account** permissions:
    - D1: Edit
    - Cloudflare Pages: Edit
-   - Access: Apps and Policies: Edit
-   - Access: Organizations, Identity Providers, and Groups: Edit
    - Account Settings: Read
-2. In this GitHub repo, go to **Settings → Secrets and variables → Actions → New repository secret** and add:
+2. **Add three repository secrets** in GitHub under **Settings → Secrets and variables → Actions → New repository secret**:
    - `CLOUDFLARE_API_TOKEN`: the token
-   - `ALLOWED_EMAIL`: the email that's allowed to sign in
-   - `ACCESS_TEAM_NAME` (optional): only needed if you've never used Zero Trust. Pick any short name; your login page becomes `<name>.cloudflareaccess.com`.
-3. Go to **Actions → Deploy to Cloudflare → Run workflow**.
+   - `LOGIN_USERNAME`: the username you'll sign in with (3–64 letters, numbers, `.`, `-` or `_`)
+   - `LOGIN_PASSWORD`: your password, at least 10 characters
+3. **Run the workflow:** go to **Actions → Deploy to Cloudflare → Run workflow**.
 
-The workflow (`scripts/setup-cloudflare.mjs`) creates the D1 database and tables, the Pages project, the one-time-PIN login, and an Access application that only allows your email. It saves your email as an encrypted Pages secret and deploys. It's safe to re-run. The non-secret IDs it generates are committed back to `wrangler.toml`.
+The workflow runs `scripts/setup-cloudflare.mjs`. That script creates the D1 database and tables, the Pages project, the `AUTH_PEPPER` secret and your account, then deploys. It's safe to re-run. After the first run, your password is left alone, so changes you make in the app stick.
 
-You can run the same script locally instead: `CLOUDFLARE_API_TOKEN=<token> npm run setup -- you@example.com`.
+**Forgot your password?** Update the `LOGIN_PASSWORD` secret (and `LOGIN_USERNAME` if you like), then run the workflow with **Reset password** ticked. This also signs out every device.
 
-## Deploy manually (Cloudflare dashboard, about 15 minutes)
-
-### 1. Create the database
-1. Cloudflare dashboard → **Storage & Databases → D1 → Create database**. Name it `work-tracker`.
-2. Open the database → **Console**, paste the contents of `migrations/0001_init.sql`, and run it.
-3. Copy the **Database ID** into `wrangler.toml` as `database_id`, then commit the change. You can edit the file directly on GitHub.
-
-### 2. Create the Pages site
-1. **Workers & Pages → Create → Pages → Connect to Git** and pick this repository.
-2. Framework preset: **None**. Leave the build command empty. Build output directory: `public`.
-3. Deploy. Note your URL, e.g. `work-tracker-abc.pages.dev`.
-
-   Until step 4 is done, the page loads but shows *"Cloudflare Access is not configured"*. That's expected: the API stays locked until Access is set up.
-
-### 3. Lock it down with Cloudflare Access
-1. Open **Zero Trust** from the dashboard. If it's your first time, choose a team name (this gives you `<team>.cloudflareaccess.com`) and pick the **Free** plan.
-2. **Access → Applications → Add an application → Self-hosted.**
-   - Add your hostname: `work-tracker-abc.pages.dev`. Also add `*.work-tracker-abc.pages.dev` so preview deployments are covered too. If you use a custom domain, add that as well.
-   - Policy: **Allow**, Include → **Emails** → your email address.
-   - Login methods: **One-time PIN** is enabled by default. You can add Google or GitHub login if you prefer.
-3. Save, then open the application and copy its **Application Audience (AUD) Tag**.
-
-### 4. Connect the app to Access
-Edit `wrangler.toml`:
-
-```toml
-[vars]
-ACCESS_TEAM_DOMAIN = "<team>.cloudflareaccess.com"
-ACCESS_AUD = "<the AUD tag>"
-```
-
-Optionally add `ALLOWED_EMAILS` (your email) as an encrypted variable in the Pages project settings as a second lock. Commit and push. Pages redeploys automatically. Visit your site, enter the code emailed to you, and you're in.
-
-> Pages reads the D1 binding and variables from `wrangler.toml`, so you don't set them in the dashboard. None of these values are secrets.
-
-## Deploy from the command line (alternative)
-
-```bash
-npm install
-npx wrangler login
-npm run db:create          # copy the printed database_id into wrangler.toml
-npm run db:migrate         # creates the tables in the remote database
-npm run deploy             # then do steps 3–4 above
-```
+You can also run the script from your own computer:
+`CLOUDFLARE_API_TOKEN=… LOGIN_USERNAME=… LOGIN_PASSWORD=… npm run setup`
 
 ## Local development
 
 ```bash
 npm install
-cp .dev.vars.example .dev.vars   # sets DEV_AUTH_EMAIL, used only on localhost
+cp .dev.vars.example .dev.vars            # local-only AUTH_PEPPER
 npm run db:migrate:local
-npm run dev                      # http://localhost:8788
+npm run user:local -- myname 'a long password'
+npm run dev                               # http://localhost:8788
 ```
-
-`DEV_AUTH_EMAIL` only takes effect on `localhost` / `127.0.0.1`. `.dev.vars` is git-ignored and never deployed.
 
 ## Project layout
 
 ```
 public/            static front end (index.html, app.css, app.js, _headers)
-functions/api/     Pages Functions: /api/me, /api/tasks, /api/tasks/:id, /api/tasks/:id/updates
-lib/               shared server code: auth, validation, queries
+functions/api/     Pages Functions: auth/login, auth/logout, auth/password, me, tasks, tasks/:id, tasks/:id/updates
+lib/               shared server code: passwords, sessions, lockout, validation, queries
 migrations/        D1 schema
+scripts/           Cloudflare setup and local user helper
 ```

@@ -5,10 +5,10 @@
   "scripts": {
     "setup": "NODE_USE_ENV_PROXY=1 NODE_NO_WARNINGS=1 node scripts/setup-cloudflare.mjs",
     "dev": "wrangler pages dev",
-    "db:create": "wrangler d1 create work-tracker",
     "db:migrate:local": "wrangler d1 migrations apply work-tracker --local",
     "db:migrate": "wrangler d1 migrations apply work-tracker --remote",
-    "deploy": "wrangler pages deploy --project-name work-tracker --branch main"
+    "deploy": "wrangler pages deploy --project-name work-tracker --branch main",
+    "user:local": "node scripts/local-user.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"

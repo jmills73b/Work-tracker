@@ -11,6 +11,26 @@
   <script src="/app.js" defer></script>
 </head>
 <body>
+  <section class="login" id="login" hidden>
+    <form class="login-card" id="login-form" novalidate>
+      <span class="brand-mark lg" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+      </span>
+      <h1>Sign in</h1>
+      <p class="login-sub">to your Work Tracker</p>
+      <label class="field">
+        <span>Username</span>
+        <input class="input" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="64" required>
+      </label>
+      <label class="field">
+        <span>Password</span>
+        <input class="input" name="password" type="password" autocomplete="current-password" maxlength="200" required>
+      </label>
+      <p class="form-error" id="login-error" role="alert" hidden></p>
+      <button class="btn primary block" type="submit" id="login-submit">Sign in</button>
+    </form>
+  </section>
+
   <header class="topbar">
     <div class="brand">
       <span class="brand-mark" aria-hidden="true">
@@ -29,7 +49,17 @@
       <button id="theme-toggle" class="icon-btn" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
       </button>
-      <span id="user" class="user"></span>
+      <div class="user-menu" id="user-menu" hidden>
+        <button id="user-button" class="user-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="user-dropdown">
+          <span class="avatar" id="user-avatar" aria-hidden="true"></span>
+          <span class="user-name" id="user-name"></span>
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div class="menu" id="user-dropdown" role="menu" hidden>
+          <button type="button" role="menuitem" id="change-password-btn">Change password</button>
+          <button type="button" role="menuitem" id="sign-out-btn">Sign out</button>
+        </div>
+      </div>
       <button id="new-task" class="btn primary" type="button" title="New task (N)">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
         <span>New task</span>
@@ -163,6 +193,30 @@
     </form>
     <datalist id="categories"></datalist>
   </aside>
+
+  <dialog class="dialog" id="password-dialog" aria-labelledby="password-title">
+    <form id="password-form" novalidate>
+      <h2 id="password-title">Change password</h2>
+      <label class="field">
+        <span>Current password</span>
+        <input class="input" name="current" type="password" autocomplete="current-password" maxlength="200" required>
+      </label>
+      <label class="field">
+        <span>New password</span>
+        <input class="input" name="next" type="password" autocomplete="new-password" maxlength="200" required>
+      </label>
+      <label class="field">
+        <span>Confirm new password</span>
+        <input class="input" name="confirm" type="password" autocomplete="new-password" maxlength="200" required>
+      </label>
+      <p class="hint">At least 10 characters. Your other devices will be signed out.</p>
+      <p class="form-error" id="password-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn ghost" id="password-cancel">Cancel</button>
+        <button type="submit" class="btn primary">Update password</button>
+      </div>
+    </form>
+  </dialog>
 
   <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
 </body>

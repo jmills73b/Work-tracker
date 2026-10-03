@@ -2,14 +2,11 @@ name = "work-tracker"
 compatibility_date = "2025-09-01"
 pages_build_output_dir = "public"
 
-# Fill these in after setting up Cloudflare Access (see README). They are not secrets.
-[vars]
-ACCESS_TEAM_DOMAIN = ""   # e.g. "yourname.cloudflareaccess.com"
-ACCESS_AUD = ""           # the Access application's "Application Audience (AUD) Tag"
-# ALLOWED_EMAILS is set as an encrypted Pages secret (not here) so your email stays out of the repo.
+# Secrets (set by scripts/setup-cloudflare.mjs, never stored in this repo):
+#   AUTH_PEPPER - server-side key mixed into password hashes
 
 [[d1_databases]]
 binding = "DB"
 database_name = "work-tracker"
-database_id = "00000000-0000-0000-0000-000000000000"   # replace with the id from `wrangler d1 create work-tracker`
+database_id = "00000000-0000-0000-0000-000000000000"   # filled in by the setup script
 migrations_dir = "migrations"
