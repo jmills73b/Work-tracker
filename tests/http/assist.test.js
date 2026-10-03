@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ASSIST_MAX_PER_WINDOW, ASSIST_MODEL, SUBTASK_PROMPT, SYSTEM_PROMPT } from '../../src/domain/assist.js';
-import { suggest, suggestSubtask } from '../../src/http/assist.js';
+import { ASSIST_MAX_PER_WINDOW, ASSIST_MODEL, SUBTASK_PROMPT, SYSTEM_PROMPT, UPDATE_PROMPT } from '../../src/domain/assist.js';
+import { suggest, suggestSubtask, suggestUpdate } from '../../src/http/assist.js';
 import { me } from '../../src/http/auth.js';
 import { makeClient } from '../../src/infra/assistClient.js';
 import { route } from '../../src/index.js';
@@ -126,6 +126,22 @@ describe('POST /api/assist/subtask', () => {
 
   it('is routed behind the session gate', async () => {
     const res = await route(new Request('https://t.test/api/assist/subtask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }), env());
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('POST /api/assist/update', () => {
+  it('sends the update prompt with the task title and the note, and returns the tidied text', async () => {
+    const { fetchImpl, client } = apiReturning(200, message(JSON.stringify({ text: 'Spoke to Sarah; ticket raised.', reason: 'Tidied.' })));
+    const res = await suggestUpdate(jsonRequest('/api/assist/update', { task_title: 'Fix RDH', note: 'spoke 2 sarah, raised ticket' }), env(), USER, { client });
+    expect(await res.json()).toEqual({ text: 'Spoke to Sarah; ticket raised.', reason: 'Tidied.', changed: true });
+    const body = JSON.parse(fetchImpl.mock.calls[0][1].body);
+    expect([body.model, body.system]).toEqual(['claude-haiku-4-5', UPDATE_PROMPT]);
+    expect(body.messages[0].content).toBe('<teams>Dev Ops, RDH</teams>\n<task>Fix RDH</task>\n<note>spoke 2 sarah, raised ticket</note>');
+  });
+
+  it('is routed behind the session gate', async () => {
+    const res = await route(new Request('https://t.test/api/assist/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }), env());
     expect(res.status).toBe(401);
   });
 });

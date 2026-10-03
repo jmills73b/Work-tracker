@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import {
-  ASSIST_MAX_TOKENS, ASSIST_MODEL, OUTPUT_SCHEMA, SUBTASK_PROMPT, SUBTASK_SCHEMA, subtaskMessage, SYSTEM_PROMPT, userMessage,
+  ASSIST_MAX_TOKENS, ASSIST_MODEL, OUTPUT_SCHEMA, SUBTASK_PROMPT, SUBTASK_SCHEMA, subtaskMessage, SYSTEM_PROMPT, UPDATE_PROMPT,
+  UPDATE_SCHEMA, updateMessage, userMessage,
 } from '../domain/assist.js';
 
 export class AssistUnavailable extends Error {}
@@ -29,3 +30,5 @@ async function ask(client, system, content, schema) {
 export const requestSuggestion = (client, task, teams) => ask(client, SYSTEM_PROMPT, userMessage(task, teams), OUTPUT_SCHEMA);
 
 export const requestSubtaskSuggestion = (client, subtask, teams) => ask(client, SUBTASK_PROMPT, subtaskMessage(subtask, teams), SUBTASK_SCHEMA);
+
+export const requestUpdateSuggestion = (client, update, teams) => ask(client, UPDATE_PROMPT, updateMessage(update, teams), UPDATE_SCHEMA);

@@ -934,3 +934,9 @@ input[type="date"].input::-webkit-date-and-time-value { text-align: left; margin
 .parent-task { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
 .parent-task span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .subtask-pill { background: var(--surface-2); color: var(--text-2); }
+.update-assist { width: auto; height: 30px; gap: 5px; padding: 0 10px; display: inline-flex; align-items: center; font-size: 13px; font-weight: 600; opacity: 1; background: var(--accent-soft); }
+.composer-actions { display: flex; gap: 8px; margin-left: auto; }
+.composer-row .composer-actions .btn { margin-left: 0; }
+.update-assist.is-busy span { display: none; }
+@media (pointer: coarse) { .update-assist { width: auto; height: 36px; } }
+.update-suggest { margin-top: 10px; }

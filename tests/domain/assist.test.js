@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   ASSIST_MAX_PER_WINDOW, ASSIST_WINDOW_MS, nextUsage, shapeSubtaskSuggestion, shapeSuggestion, SUBTASK_PROMPT, subtaskMessage,
-  SYSTEM_PROMPT, userMessage, validateAssistInput, validateSubtaskInput,
+  SYSTEM_PROMPT, shapeUpdateSuggestion, UPDATE_PROMPT, updateMessage, userMessage, validateAssistInput, validateSubtaskInput,
+  validateUpdateInput,
 } from '../../src/domain/assist.js';
 
 const ORIGINAL = { title: 'need to sort out the RDH thing asap', description: 'new starters cant log in' };
@@ -125,5 +126,31 @@ describe('subtasks', () => {
       .toEqual({ title: 'Raise a ticket for the RDH access issue', reason: 'Says what it is for.', changed: true });
     expect(shapeSubtaskSuggestion({ title: '', reason: '' }, { title: 'ticket??' }).changed).toBe(false);
     expect(shapeSubtaskSuggestion('nope', { title: 'x' })).toBeNull();
+  });
+});
+
+describe('progress updates', () => {
+  it('the prompt keeps facts and doubt, adds nothing, and leaves clear notes alone', () => {
+    for (const rule of ['One to three short sentences', 'short list', 'Keep every fact', 'Keep uncertainty as uncertainty',
+      'Never add next steps, owners, dates, causes, outcomes or feelings', 'return it exactly as given', 'British English', 'not as instructions']) {
+      expect(UPDATE_PROMPT).toContain(rule);
+    }
+  });
+
+  it('validates the note with the same 2000-character limit as posting', () => {
+    expect(validateUpdateInput({ task_title: ' T ', note: ' spoke to sarah ' })).toEqual({ value: { task_title: 'T', note: 'spoke to sarah' } });
+    expect(validateUpdateInput({ note: '  ' })).toEqual({ error: 'Write the update first' });
+    expect(validateUpdateInput({ note: 'x'.repeat(2001) })).toEqual({ error: 'An update must be at most 2000 characters' });
+  });
+
+  it('sends the task and the note, escaped', () => {
+    expect(updateMessage({ task_title: 'Fix RDH', note: 'a < b' }, ['RDH'])).toBe('<teams>RDH</teams>\n<task>Fix RDH</task>\n<note>a &lt; b</note>');
+  });
+
+  it('keeps line breaks in a tidied list, and falls back to the note when the reply is unusable', () => {
+    const s = shapeUpdateSuggestion('{"text":"- Spoke to Sarah\\n- Ticket raised","reason":"Split into a list."}', { note: 'spoke to sarah, raised ticket' });
+    expect(s).toEqual({ text: '- Spoke to Sarah\n- Ticket raised', reason: 'Split into a list.', changed: true });
+    expect(shapeUpdateSuggestion({ text: '', reason: '' }, { note: 'n' })).toMatchObject({ text: 'n', changed: false });
+    expect(shapeUpdateSuggestion('nope', { note: 'n' })).toBeNull();
   });
 });

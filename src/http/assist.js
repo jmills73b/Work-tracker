@@ -1,6 +1,10 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { shapeSubtaskSuggestion, shapeSuggestion, validateAssistInput, validateSubtaskInput } from '../domain/assist.js';
-import { AssistUnavailable, makeClient, requestSubtaskSuggestion, requestSuggestion } from '../infra/assistClient.js';
+import {
+  shapeSubtaskSuggestion, shapeSuggestion, shapeUpdateSuggestion, validateAssistInput, validateSubtaskInput, validateUpdateInput,
+} from '../domain/assist.js';
+import {
+  AssistUnavailable, makeClient, requestSubtaskSuggestion, requestSuggestion, requestUpdateSuggestion,
+} from '../infra/assistClient.js';
 import { take } from '../infra/assistUsageRepo.js';
 import { listTeams } from '../infra/teamsRepo.js';
 import { json } from './respond.js';
@@ -18,7 +22,12 @@ export function suggestSubtask(request, env, user, options) {
   return run(request, env, user, options, validateSubtaskInput, requestSubtaskSuggestion, shapeSubtaskSuggestion);
 }
 
-// Check → count against the hourly allowance → one call → shape. Both kinds share the
+// Body: { task_title, note }: a rough progress note to tidy before posting.
+export function suggestUpdate(request, env, user, options) {
+  return run(request, env, user, options, validateUpdateInput, requestUpdateSuggestion, shapeUpdateSuggestion);
+}
+
+// Check → count against the hourly allowance → one call → shape. Every kind shares the
 // allowance and the error messages.
 async function run(request, env, user, { client } = {}, validate, call, shape) {
   if (!isEnabled(env)) return json({ error: "The assistant isn't set up yet" }, 503);

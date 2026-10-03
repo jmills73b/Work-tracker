@@ -752,6 +752,7 @@
       const detail = await api(`/tasks/${encodeURIComponent(task.id)}/updates`, { method: 'POST', body });
       noteEl.value = '';
       $('#update-status').value = '';
+      closeSubtaskSuggestion();
       applyDetail(detail);
       toast('Update posted');
     } catch (err) {
@@ -1015,8 +1016,9 @@
     toast(state.current ? 'Wording replaced. Save changes to keep it.' : 'Wording replaced');
   }
 
-  // One subtask at a time: the suggestion opens in place under the row (or under the
-  // "Add a subtask" box) with Keep / Use. It sees the task title and the other subtasks.
+  // One inline suggestion at a time (a subtask's, or the update box's Tidy). A subtask's
+  // opens in place under the row (or under the "Add a subtask" box) with Keep / Use. It
+  // sees the task title and the other subtasks.
   const subAssist = { run: 0, panel: null, btn: null };
 
   function closeSubtaskSuggestion() {
@@ -1057,6 +1059,55 @@
         h('div', { class: 'assist-actions' },
           h('button', { type: 'button', class: 'btn', text: 'Keep', onclick: closeSubtaskSuggestion }),
           h('button', { type: 'button', class: 'btn primary', text: 'Use', onclick: () => { closeSubtaskSuggestion(); onUse(s.title); } })));
+    } catch (err) {
+      if (run !== subAssist.run || err.silent) return;
+      panel.replaceChildren(h('p', { class: 'assist-status', role: 'status', text: err.message }), h('div', { class: 'assist-actions' }, close));
+    } finally {
+      if (run === subAssist.run) btn.classList.remove('is-busy');
+    }
+  }
+
+  // ✨ Tidy on the progress update box: yours and the tidied version side by side under the
+  // box; Replace puts it in the box, and nothing is posted until Post update.
+  async function tidyUpdate(btn) {
+    const noteEl = $('#update-note');
+    const note = noteEl.value.trim();
+    if (!note) {
+      toast('Write your update first, then tidy it', 'error');
+      noteEl.focus();
+      return;
+    }
+    closeSubtaskSuggestion();
+    const run = subAssist.run;
+    const panel = h('div', { class: 'subtask-suggest update-suggest' },
+      h('p', { class: 'assist-status is-busy', role: 'status', text: 'Tidying your update…' }));
+    $('.composer').after(panel);
+    Object.assign(subAssist, { panel, btn });
+    btn.classList.add('is-busy');
+
+    const close = h('button', { type: 'button', class: 'btn', text: 'Close', onclick: closeSubtaskSuggestion });
+    try {
+      const s = await api('/assist/update', { method: 'POST', body: { task_title: field('title').value.trim(), note } });
+      if (run !== subAssist.run) return;
+      if (!s.changed) {
+        panel.replaceChildren(h('p', { class: 'assist-status', role: 'status', text: 'This update already reads clearly.' }), h('div', { class: 'assist-actions' }, close));
+        return;
+      }
+      panel.replaceChildren(
+        h('div', { class: 'assist-compare' },
+          h('div', { class: 'assist-card' }, h('span', { class: 'assist-label', text: 'Yours' }), h('p', { text: note })),
+          h('div', { class: 'assist-card suggested' }, h('span', { class: 'assist-label', text: 'Tidied' }), h('p', { text: s.text }))),
+        s.reason && h('p', { class: 'assist-why', text: s.reason }),
+        h('div', { class: 'assist-actions' },
+          h('button', { type: 'button', class: 'btn', text: 'Keep mine', onclick: closeSubtaskSuggestion }),
+          h('button', {
+            type: 'button', class: 'btn primary', text: 'Replace',
+            onclick: () => {
+              closeSubtaskSuggestion();
+              noteEl.value = s.text;
+              noteEl.focus();
+            },
+          })));
     } catch (err) {
       if (run !== subAssist.run || err.silent) return;
       panel.replaceChildren(h('p', { class: 'assist-status', role: 'status', text: err.message }), h('div', { class: 'assist-actions' }, close));
@@ -1575,6 +1626,7 @@
       setDirty(true);
     });
     $('#subtask-add-btn').addEventListener('click', addSubtask);
+    $('#update-assist').addEventListener('click', (e) => tidyUpdate(e.currentTarget));
     $('#subtask-input-assist').addEventListener('click', (e) => {
       const input = $('#subtask-input');
       suggestSubtaskWording(input, $('.subtask-add'), e.currentTarget, (text) => {
@@ -1645,6 +1697,7 @@
     state.assistant = Boolean(user.assistant);
     $('#assist-btn').hidden = !state.assistant;
     $('#subtask-input-assist').hidden = !state.assistant;
+    $('#update-assist').hidden = !state.assistant;
   }
 
   async function loadApp() {

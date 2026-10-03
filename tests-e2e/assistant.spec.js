@@ -136,3 +136,39 @@ test('a subtask gets its own suggestion in place, using the task for context; Us
   await drawer.locator('.subtask-suggest').getByRole('button', { name: 'Use' }).click();
   await expect(drawer.locator('#subtask-input')).toHaveValue('Raise a ticket for the RDH access issue');
 });
+
+test('Tidy shows your update and the tidied one side by side; Replace fills the box and nothing posts until Post update', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.route('**/api/auth/me', async (route) => {
+    const res = await route.fetch();
+    await route.fulfill({ response: res, json: { ...(await res.json()), assistant: true } });
+  });
+  const asked = [];
+  await page.route('**/api/assist/update', async (route) => {
+    asked.push(route.request().postDataJSON());
+    await route.fulfill({ json: { text: 'Spoke to Sarah. Ticket raised for the AD group.', reason: 'Two clear sentences.', changed: true } });
+  });
+  await signIn(page);
+  await page.keyboard.press('n');
+  await page.locator('#quick-input').fill('Tidy test task');
+  await page.locator('#quick-input').press('Enter');
+  await page.locator('.row', { hasText: 'Tidy test task' }).first().click();
+
+  const drawer = page.locator('#drawer');
+  await drawer.locator('#update-note').fill('spoke 2 sarah, raised ticket re AD grp');
+  await drawer.getByRole('button', { name: 'Tidy this update' }).click();
+  const panel = drawer.locator('.update-suggest');
+  await expect(panel.locator('.assist-card').first()).toContainText('spoke 2 sarah, raised ticket re AD grp');
+  await expect(panel.locator('.assist-card.suggested')).toContainText('Spoke to Sarah. Ticket raised for the AD group.');
+  expect(asked).toEqual([{ task_title: 'Tidy test task', note: 'spoke 2 sarah, raised ticket re AD grp' }]);
+  const [a, b] = await panel.locator('.assist-card').evaluateAll((cards) => cards.map((c) => c.getBoundingClientRect()));
+  expect(Math.abs(a.top - b.top)).toBeLessThan(1);
+
+  await panel.getByRole('button', { name: 'Replace' }).click();
+  await expect(panel).toHaveCount(0);
+  await expect(drawer.locator('#update-note')).toHaveValue('Spoke to Sarah. Ticket raised for the AD group.');
+  await expect(drawer.locator('#timeline')).not.toContainText('Spoke to Sarah');
+
+  await drawer.getByRole('button', { name: 'Post update' }).click();
+  await expect(drawer.locator('#timeline')).toContainText('Spoke to Sarah. Ticket raised for the AD group.');
+});
