@@ -12,6 +12,8 @@
     trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2',
     clipboard: 'M9 4h6v3H9zM9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 13l2 2 4-4',
     search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-3.5-3.5',
+    x: 'M6 6l12 12M18 6L6 18',
+    subtasks: 'M10 6h10M10 12h10M10 18h10M3.5 6l1.5 1.5L7.5 5M3.5 12l1.5 1.5 2.5-2.5M3.5 18l1.5 1.5 2.5-2.5',
   };
 
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -35,6 +37,7 @@
     q: '',
     current: null, // task open in the drawer (null = creating a new one)
     drawerOpen: false,
+    subtasks: [], // the open task's subtasks, or drafts while creating a new task
     dirty: false,
   };
 
@@ -261,10 +264,15 @@
 
   const statusPill = (s) => h('span', { class: `pill status-${s}`, text: STATUS[s] });
 
-  function progressBar(p) {
-    return h('span', { class: `progress${p >= 100 ? ' complete' : ''}`, title: `${p}% complete` },
-      h('span', { class: 'progress-track' }, h('span', { class: 'progress-fill', vars: { '--p': `${p}%` } })),
-      h('span', { class: 'progress-value', text: `${p}%` }));
+  // "2/5" with a checklist icon; nothing at all for a task without subtasks.
+  function subtaskChip(t) {
+    const total = t.subtask_total || 0;
+    if (!total) return h('span', { class: 'subtask-chip is-none', 'aria-hidden': 'true' });
+    const done = t.subtask_done || 0;
+    return h('span', {
+      class: `subtask-chip${done === total ? ' complete' : ''}`,
+      title: `${done} of ${total} subtasks done`,
+    }, icon('subtasks', 14), `${done}/${total}`);
   }
 
   function dueLabel(t) {
@@ -281,7 +289,7 @@
       'aria-label': done ? `Mark "${t.title}" as not done` : `Mark "${t.title}" as done`,
       onclick: (e) => {
         e.stopPropagation();
-        patchTask(t.id, { status: done ? (t.progress > 0 && t.progress < 100 ? 'in_progress' : 'todo') : 'done' });
+        patchTask(t.id, { status: done ? (t.subtask_done > 0 ? 'in_progress' : 'todo') : 'done' });
       },
     }, icon('check', 13));
   }
@@ -289,7 +297,7 @@
   function renderList(root, tasks) {
     root.append(h('div', { class: 'list', role: 'list' },
       h('div', { class: 'list-head', 'aria-hidden': 'true' },
-        h('span'), h('span', { text: 'Task' }), h('span', { text: 'Status' }), h('span', { text: 'Progress' }), h('span', { text: 'Target' })),
+        h('span'), h('span', { text: 'Task' }), h('span', { text: 'Status' }), h('span', { text: 'Subtasks' }), h('span', { text: 'Target' })),
       tasks.map(taskRow)));
   }
 
@@ -308,7 +316,7 @@
         t.category && h('span', { class: 'tag', text: t.category }),
         t.last_note && h('span', { class: 'last-note', text: t.last_note }))),
     statusPill(t.status),
-    progressBar(t.progress),
+    subtaskChip(t),
     dueLabel(t));
   }
 
@@ -354,7 +362,7 @@
       t.category && h('span', { class: 'tag', text: t.category })),
     h('div', { class: 'card-title', text: t.title }),
     t.last_note && h('div', { class: 'card-note', text: t.last_note }),
-    h('div', { class: 'card-foot' }, progressBar(t.progress), dueLabel(t)));
+    h('div', { class: 'card-foot' }, subtaskChip(t), dueLabel(t)));
     return card;
   }
 
@@ -363,7 +371,7 @@
       h('span', { class: 'empty-icon' }, icon(firstRun ? 'clipboard' : 'search', 22)),
       h('h2', { text: firstRun ? 'No tasks yet' : 'Nothing matches' }),
       h('p', { text: firstRun
-        ? 'Capture your first task — give it a priority and a target date, then post progress updates as you go.'
+        ? 'Capture your first task — give it a priority, a target date and subtasks, then post updates as you go.'
         : 'Try a different filter or search term.' }),
       firstRun
         ? h('button', { type: 'button', class: 'btn primary', onclick: openNew }, icon('plus'), 'New task')
@@ -402,7 +410,7 @@
     const i = state.tasks.findIndex((t) => t.id === id);
     if (i === -1) return;
     const before = state.tasks[i];
-    state.tasks[i] = { ...before, ...changes, ...(changes.status === 'done' ? { progress: 100 } : {}) };
+    state.tasks[i] = { ...before, ...changes };
     render();
     try {
       const detail = await api(`/tasks/${encodeURIComponent(id)}`, { method: 'PATCH', body: changes });
@@ -415,12 +423,13 @@
     }
   }
 
-  function applyDetail({ task, updates }) {
+  function applyDetail({ task, updates, subtasks }) {
     upsert(task);
     if (state.drawerOpen && state.current && state.current.id === task.id) {
       state.current = task;
       if (!state.dirty) fillForm(task);
       renderTimeline(updates);
+      renderSubtasks(subtasks || []);
       renderMeta(task);
     }
     render();
@@ -456,8 +465,9 @@
     $('#delete-btn').hidden = !task;
     $('#updates-section').hidden = !task;
     $('#update-note').value = '';
-    $('#update-progress').value = '';
     $('#update-status').value = '';
+    $('#subtask-input').value = '';
+    renderSubtasks([]);
     renderTimeline(null);
     renderMeta(task);
 
@@ -489,15 +499,14 @@
   }
 
   function fillForm(task) {
-    const t = task || { title: '', description: '', status: 'todo', priority: 'medium', progress: 0, target_date: '', category: '' };
+    const t = task || { title: '', description: '', status: 'todo', priority: 'medium', target_date: '', category: '' };
     field('title').value = t.title;
     field('description').value = t.description;
     field('status').value = t.status;
     field('priority').value = t.priority;
-    field('progress').value = t.progress;
     field('target_date').value = t.target_date || '';
     field('category').value = t.category;
-    $('#progress-out').textContent = `${t.progress}%`;
+    requestAnimationFrame(() => { autoGrow(field('title')); autoGrow(field('description')); });
     setDirty(false);
   }
 
@@ -507,7 +516,6 @@
       description: field('description').value.trim(),
       status: field('status').value,
       priority: field('priority').value,
-      progress: Number(field('progress').value),
       target_date: field('target_date').value || null,
       category: field('category').value.trim(),
     };
@@ -539,7 +547,6 @@
           h('div', { class: 'tl-meta' },
             time,
             u.status && statusPill(u.status),
-            u.progress != null && h('span', { class: 'chip', text: `${u.progress}%` }),
             h('button', { type: 'button', class: 'icon-btn tl-del', title: 'Delete update', 'aria-label': 'Delete update', onclick: () => deleteUpdate(u.id) }, icon('trash', 14))),
           h('p', { class: 'tl-text', text: u.note })));
     }));
@@ -564,7 +571,8 @@
         applyDetail(detail);
         toast('Saved');
       } else {
-        const detail = await api('/tasks', { method: 'POST', body: data });
+        const subtasks = state.subtasks.map((st) => st.title);
+        const detail = await api('/tasks', { method: 'POST', body: { ...data, subtasks } });
         upsert(detail.task);
         setDirty(false);
         showDrawer(detail.task);
@@ -602,9 +610,7 @@
       return;
     }
     const body = { note };
-    const progress = $('#update-progress').value;
     const status = $('#update-status').value;
-    if (progress !== '') body.progress = Number(progress);
     if (status) body.status = status;
 
     const btn = $('#post-update');
@@ -612,7 +618,6 @@
     try {
       const detail = await api(`/tasks/${encodeURIComponent(task.id)}/updates`, { method: 'POST', body });
       noteEl.value = '';
-      $('#update-progress').value = '';
       $('#update-status').value = '';
       applyDetail(detail);
       toast('Update posted');
@@ -631,6 +636,118 @@
     } catch (err) {
       notify(err);
     }
+  }
+
+  /* ---------- Subtasks ---------- */
+  // On a saved task each change is sent straight away and the server's copy replaces
+  // ours. While creating a task they are drafts, sent along with the create.
+
+  const subtaskPath = (id = '') => `/tasks/${encodeURIComponent(state.current.id)}/subtasks${id ? `/${encodeURIComponent(id)}` : ''}`;
+
+  function renderSubtasks(subtasks) {
+    state.subtasks = subtasks;
+    const done = subtasks.filter((st) => st.done).length;
+    $('#subtask-count').textContent = subtasks.length ? `${done} of ${subtasks.length} done` : '';
+    $('#subtask-list').replaceChildren(...subtasks.map((st, i) => subtaskItem(st, i)));
+  }
+
+  function subtaskItem(st, i) {
+    const draft = !state.current;
+    const title = h('input', {
+      class: 'subtask-title', value: st.title, maxlength: '200', 'aria-label': 'Subtask title', enterkeyhint: 'done',
+    });
+    title.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); title.blur(); }
+      if (e.key === 'Escape') { e.stopPropagation(); title.value = st.title; title.blur(); }
+    });
+    title.addEventListener('change', () => renameSubtask(i, title));
+    return h('li', { class: `subtask${st.done ? ' is-done' : ''}` },
+      h('button', {
+        type: 'button',
+        class: 'check sm',
+        disabled: draft,
+        title: draft ? 'Create the task to tick off subtasks' : st.done ? 'Mark as not done' : 'Mark as done',
+        'aria-label': `${st.done ? 'Mark not done' : 'Mark done'}: ${st.title}`,
+        onclick: () => toggleSubtask(i),
+      }, icon('check', 12)),
+      title,
+      h('button', {
+        type: 'button', class: 'icon-btn subtask-del', title: 'Delete subtask', 'aria-label': `Delete subtask: ${st.title}`,
+        onclick: () => removeSubtask(i),
+      }, icon('x', 15)));
+  }
+
+  async function addSubtask() {
+    const input = $('#subtask-input');
+    const title = input.value.trim();
+    if (!title) return input.focus();
+    if (!state.current) {
+      renderSubtasks([...state.subtasks, { id: `draft-${state.subtasks.length}-${Date.now()}`, title, done: 0 }]);
+      setDirty(true);
+      input.value = '';
+      return input.focus();
+    }
+    const btn = $('#subtask-add-btn');
+    btn.disabled = true;
+    try {
+      applyDetail(await api(subtaskPath(), { method: 'POST', body: { title } }));
+      input.value = '';
+    } catch (err) {
+      notify(err);
+    } finally {
+      btn.disabled = false;
+      input.focus();
+    }
+  }
+
+  async function toggleSubtask(i) {
+    const before = state.subtasks;
+    const st = before[i];
+    if (!state.current || !st) return;
+    renderSubtasks(before.map((x, j) => (j === i ? { ...x, done: x.done ? 0 : 1 } : x)));
+    try {
+      applyDetail(await api(subtaskPath(st.id), { method: 'PATCH', body: { done: !st.done } }));
+    } catch (err) {
+      renderSubtasks(before);
+      notify(err);
+    }
+  }
+
+  async function renameSubtask(i, input) {
+    const st = state.subtasks[i];
+    const title = input.value.trim();
+    if (!st || title === st.title) return;
+    if (!title) {
+      input.value = st.title;
+      return;
+    }
+    if (!state.current) {
+      renderSubtasks(state.subtasks.map((x, j) => (j === i ? { ...x, title } : x)));
+      return;
+    }
+    try {
+      applyDetail(await api(subtaskPath(st.id), { method: 'PATCH', body: { title } }));
+    } catch (err) {
+      input.value = st.title;
+      notify(err);
+    }
+  }
+
+  async function removeSubtask(i) {
+    const st = state.subtasks[i];
+    if (!st) return;
+    if (!state.current) return renderSubtasks(state.subtasks.filter((_, j) => j !== i));
+    try {
+      applyDetail(await api(subtaskPath(st.id), { method: 'DELETE' }));
+    } catch (err) {
+      notify(err);
+    }
+  }
+
+  // Textareas grow with their content instead of showing a scrollbar or a tall empty box.
+  function autoGrow(el) {
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight + 2}px`;
   }
 
   /* ---------- Theme ---------- */
@@ -660,15 +777,22 @@
     $('#post-update').addEventListener('click', postUpdate);
     form.addEventListener('submit', saveTask);
     form.addEventListener('input', (e) => {
-      if (e.target.closest('.composer')) return;
-      if (e.target === field('progress')) $('#progress-out').textContent = `${field('progress').value}%`;
-      if (e.target === field('status') && field('status').value === 'done') {
-        field('progress').value = 100;
-        $('#progress-out').textContent = '100%';
-      }
+      if (e.target === field('title') && /[\r\n]/.test(e.target.value)) e.target.value = e.target.value.replace(/[\r\n]+/g, ' ');
+      if (e.target.tagName === 'TEXTAREA') autoGrow(e.target);
+      if (e.target.closest('.composer, .subtasks')) return;
       setDirty(true);
     });
+    $('#subtask-add-btn').addEventListener('click', addSubtask);
+    $('#subtask-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); addSubtask(); }
+    });
     form.addEventListener('keydown', (e) => {
+      // The title wraps like a paragraph but is one line: Enter saves instead of adding a newline.
+      if (e.target === field('title') && e.key === 'Enter' && !e.isComposing) {
+        e.preventDefault();
+        form.requestSubmit();
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
         if (e.target.id === 'update-note') postUpdate();
@@ -707,9 +831,6 @@
     window.addEventListener('beforeunload', (e) => {
       if (state.dirty) e.preventDefault();
     });
-
-    const progressOptions = Array.from({ length: 11 }, (_, i) => h('option', { value: i * 10, text: `${i * 10}%` }));
-    $('#update-progress').append(...progressOptions);
   }
 
   /* ---------- Account ---------- */

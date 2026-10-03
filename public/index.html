@@ -110,8 +110,8 @@
       </div>
 
       <div class="drawer-body">
-        <input name="title" class="title-input" placeholder="What needs doing?" maxlength="200" aria-label="Task title" required>
-        <textarea name="description" class="desc-input" placeholder="Add details, links, context…" rows="3" maxlength="5000" aria-label="Description"></textarea>
+        <textarea name="title" class="title-input" placeholder="What needs doing?" maxlength="200" rows="1" aria-label="Task title" required enterkeyhint="done"></textarea>
+        <textarea name="description" class="desc-input" placeholder="Add details, links, context…" rows="1" maxlength="5000" aria-label="Description"></textarea>
 
         <div class="field-grid">
           <label class="field">
@@ -142,10 +142,17 @@
           </label>
         </div>
 
-        <label class="field progress-field">
-          <span class="field-row"><span>Progress</span><output id="progress-out">0%</output></span>
-          <input name="progress" type="range" min="0" max="100" step="5" value="0">
-        </label>
+        <section class="subtasks" id="subtasks-section" aria-labelledby="subtasks-label">
+          <div class="subtasks-head">
+            <span class="section-label" id="subtasks-label">Subtasks</span>
+            <span class="subtask-count" id="subtask-count"></span>
+          </div>
+          <ul class="subtask-list" id="subtask-list"></ul>
+          <div class="subtask-add">
+            <input id="subtask-input" class="input" placeholder="Add a subtask" maxlength="200" enterkeyhint="enter" autocomplete="off" aria-label="New subtask">
+            <button type="button" class="btn" id="subtask-add-btn">Add</button>
+          </div>
+        </section>
 
         <div class="form-actions">
           <button type="submit" class="btn primary" id="save-btn">Create task</button>
@@ -158,11 +165,6 @@
           <div class="composer">
             <textarea id="update-note" rows="2" maxlength="2000" placeholder="What's the latest? (Ctrl+Enter to post)" aria-label="Progress update"></textarea>
             <div class="composer-row">
-              <label class="mini">Progress
-                <select id="update-progress" class="select mini-select">
-                  <option value="">—</option>
-                </select>
-              </label>
               <label class="mini">Status
                 <select id="update-status" class="select mini-select">
                   <option value="">No change</option>

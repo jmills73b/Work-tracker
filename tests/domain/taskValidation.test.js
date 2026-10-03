@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { validateTask, validateUpdate } from '../../src/domain/taskValidation.js';
+import {
+  MAX_SUBTASKS, validateSubtaskCreate, validateSubtaskPatch, validateTask, validateUpdate,
+} from '../../src/domain/taskValidation.js';
 
 describe('validateTask', () => {
   it('drops fields it does not know, so no client-supplied key can reach an UPDATE as a column name', () => {
@@ -8,19 +10,8 @@ describe('validateTask', () => {
     expect(Object.keys(value)).toEqual(['title']);
   });
 
-  it('accepts progress of zero', () => {
-    expect(validateTask({ title: 'T', progress: 0 }).value.progress).toBe(0);
-  });
-
-  it('refuses null progress rather than storing it as zero', () => {
-    // Number(null) === 0; a null that slipped through would silently reset progress.
-    expect(validateTask({ title: 'T', progress: null }).error).toMatch(/Progress/);
-  });
-
-  it('refuses fractional and out-of-range progress', () => {
-    expect(validateTask({ title: 'T', progress: 50.5 }).error).toMatch(/Progress/);
-    expect(validateTask({ title: 'T', progress: 101 }).error).toMatch(/Progress/);
-    expect(validateTask({ title: 'T', progress: -1 }).error).toMatch(/Progress/);
+  it('ignores a percentage progress field now that progress is tracked by subtasks', () => {
+    expect(validateTask({ title: 'T', progress: 50 }).value).toEqual({ title: 'T' });
   });
 
   it('treats an empty target date as clearing the date', () => {
@@ -42,13 +33,61 @@ describe('validateTask', () => {
   });
 });
 
-describe('validateUpdate', () => {
-  it('reads null progress as "leave progress alone"', () => {
-    expect(validateUpdate({ note: 'n', progress: null }).value.progress).toBeNull();
+describe('validateTask subtasks', () => {
+  it('accepts a list of subtask titles on create, trimmed', () => {
+    expect(validateTask({ title: 'T', subtasks: [' Draft ', 'Review'] }).value.subtasks).toEqual(['Draft', 'Review']);
   });
 
-  it('reads zero progress as "set progress to zero", not as "leave it alone"', () => {
-    expect(validateUpdate({ note: 'n', progress: 0 }).value.progress).toBe(0);
+  it('refuses a blank subtask title rather than creating an empty row', () => {
+    expect(validateTask({ title: 'T', subtasks: ['ok', '  '] }).error).toBe('Subtask is required');
+  });
+
+  it('refuses a subtasks value that is not a list', () => {
+    expect(validateTask({ title: 'T', subtasks: 'Draft' }).error).toMatch(/Subtasks must be a list/);
+  });
+
+  it('caps how many subtasks one request can create', () => {
+    expect(validateTask({ title: 'T', subtasks: Array.from({ length: MAX_SUBTASKS + 1 }, (_, i) => `s${i}`) }).error)
+      .toMatch(/at most/);
+  });
+
+  it('does not accept subtasks on a partial update, where they would be silently ignored', () => {
+    expect(validateTask({ subtasks: ['x'] }, { partial: true }).value).toEqual({});
+  });
+});
+
+describe('validateSubtaskPatch', () => {
+  it('reads done: false as a real change, not as "nothing sent"', () => {
+    expect(validateSubtaskPatch({ done: false }).value).toEqual({ done: false });
+  });
+
+  it('refuses 0/1 and strings for done, so "false" can never mean true', () => {
+    expect(validateSubtaskPatch({ done: 0 }).error).toBe('done must be true or false');
+    expect(validateSubtaskPatch({ done: 'false' }).error).toBe('done must be true or false');
+  });
+
+  it('refuses a body that changes nothing', () => {
+    expect(validateSubtaskPatch({}).error).toBe('Nothing to change');
+  });
+
+  it('refuses renaming a subtask to blank', () => {
+    expect(validateSubtaskPatch({ title: '   ' }).error).toBe('Subtask is required');
+  });
+});
+
+describe('validateSubtaskCreate', () => {
+  it('requires a title', () => {
+    expect(validateSubtaskCreate({ title: null }).error).toBe('Subtask is required');
+  });
+});
+
+describe('validateUpdate', () => {
+  it('reads a null status as "leave the status alone"', () => {
+    expect(validateUpdate({ note: 'n', status: null }).value.status).toBeNull();
+  });
+
+  it('drops a percentage sent with an update', () => {
+    expect(validateUpdate({ note: 'n', progress: 40 }).value).toEqual({ note: 'n', status: null });
   });
 
   it('requires a note', () => {

@@ -76,6 +76,15 @@ async function api(request, env, user, method, path) {
     if (method === 'POST') return tasks.create(request, env, user);
   }
 
+  const sub = path.match(/^\/api\/tasks\/([^/]+)\/subtasks(?:\/([^/]+))?$/);
+  if (sub) {
+    const [, id, subtaskId] = sub;
+    if (!subtaskId && method === 'POST') return tasks.addSubtask(request, env, user, id);
+    if (subtaskId && method === 'PATCH') return tasks.patchSubtask(request, env, user, id, subtaskId);
+    if (subtaskId && method === 'DELETE') return tasks.removeSubtask(env, user, id, subtaskId);
+    return null;
+  }
+
   const m = path.match(/^\/api\/tasks\/([^/]+)(?:\/updates(?:\/([^/]+))?)?$/);
   if (m) {
     const [, id, updateId] = m;

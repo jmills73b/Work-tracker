@@ -23,6 +23,22 @@ tests-e2e/            Playwright specs against a local Worker and a fresh local 
 - **Registration:** the first user (empty `users` table) becomes admin with no code. Everyone after needs an unused invite code, which admins create from the user menu ("Invite someone").
 - **Tasks are private:** every task query is scoped to the signed-in user's id.
 
+## Tasks and subtasks
+
+- A task has a status, priority, target date, category and a timeline of notes and automatic change lines.
+- **Subtasks** (`migrations/0004_subtasks.sql`) are a checklist under a task, kept in the order they were added. They replace percentage progress. `tasks.progress` and `task_updates.progress` stay in the schema, because applied migrations are never edited, but nothing reads or writes them.
+- On a saved task, each subtask change saves immediately. While a task is being created they are drafts, sent with the create as `subtasks: [titles]`.
+- Ticking a subtask on a **To do** task moves it to **In progress**. A blocked or done task is left alone (`statusAfterSubtaskChange`). Ticking and un-ticking add "Completed: …" / "Reopened: …" lines to the timeline. Renaming doesn't.
+- Marking a task done does not tick its subtasks: they stay an honest record.
+
+| Route | Purpose |
+| --- | --- |
+| `GET/POST /api/tasks` | List (with `subtask_total`, `subtask_done`), create |
+| `GET/PATCH/DELETE /api/tasks/:id` | Detail is `{ task, updates, subtasks }` |
+| `POST /api/tasks/:id/updates`, `DELETE …/updates/:uid` | Notes, optionally with a status change |
+| `POST /api/tasks/:id/subtasks` | Add a subtask (`{ title }`) |
+| `PATCH/DELETE /api/tasks/:id/subtasks/:sid` | `{ title?, done? }`. `done` must be a real boolean |
+
 ### Endpoints
 
 Auth errors are plain text, rendered verbatim by the login page.
@@ -113,11 +129,11 @@ Runs against `wrangler dev --local` and a freshly wiped local D1. It never uses 
 `tests-e2e/helpers.js` signs in, or registers if sign-in fails. It waits on a real outcome (the redirect to `/`, or the error message appearing), never a fixed timeout, because sign-in is deliberately slow.
 
 Specs, kept few:
-- `critical-path.spec.js`: sign in, create, update, complete, sign out, gate, wrong password, sign back in.
+- `critical-path.spec.js`: sign in, create a task with draft subtasks, tick one, post an update, complete, sign out, gate, wrong password, sign back in.
 - `missing-data.spec.js`: the empty-account state, and a failed save showing its message (the bug class where `notify()` called itself and froze the page).
 
 ### Verification outside the suite
 
-- Render pages in headless Chromium at 390px before shipping. This caught the login page's stuck-together buttons and a three-line phone header.
+- Render pages in headless Chromium before shipping, at iPhone 12 mini (375×812) and iPad sizes (810×1080, 1000×695, 1194×834). Measure that nothing scrolls sideways, that the date field stays in its column, and that touch-screen fields use 16px text so Safari doesn't zoom. Then look at the screenshots. That pass caught the login page's stuck-together buttons and a three-line phone header. It also caught a subtask placeholder that reused the `.empty` class and became a tall dashed box, and long titles cut off on iPhone. The measurements had passed both of those.
 - Run new SQL against a real local D1 (`wrangler d1 execute --local`). For `0003`, the production path was replayed: `0001`+`0002` with rows in the old tables, then `0003`, then a duplicate-email insert to prove the `UNIQUE` constraint refuses it.
 - Grep that documentation landed before committing.

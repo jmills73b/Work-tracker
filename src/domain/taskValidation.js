@@ -19,10 +19,6 @@ export function validStatus(v) {
   return Object.hasOwn(STATUS_LABELS, v);
 }
 
-export function validProgress(v) {
-  return Number.isInteger(v) && v >= 0 && v <= 100;
-}
-
 function validDate(v) {
   if (!DATE_RE.test(v)) return false;
   const d = new Date(`${v}T00:00:00Z`);
@@ -57,10 +53,6 @@ export function validateTask(input, { partial = false } = {}) {
     if (!Object.hasOwn(PRIORITY_LABELS, input.priority)) return { error: 'Invalid priority' };
     out.priority = input.priority;
   }
-  if ('progress' in input) {
-    if (!validProgress(input.progress)) return { error: 'Progress must be a whole number from 0 to 100' };
-    out.progress = input.progress;
-  }
   if ('target_date' in input) {
     const v = input.target_date;
     if (v === null || v === '') out.target_date = null;
@@ -68,6 +60,48 @@ export function validateTask(input, { partial = false } = {}) {
     else return { error: 'Target date must be YYYY-MM-DD' };
   }
 
+  if (!partial && 'subtasks' in input) {
+    if (!Array.isArray(input.subtasks) || input.subtasks.length > MAX_SUBTASKS) {
+      return { error: `Subtasks must be a list of at most ${MAX_SUBTASKS}` };
+    }
+    const titles = [];
+    for (const t of input.subtasks) {
+      const r = subtaskTitle(t);
+      if (r.error) return r;
+      titles.push(r.value);
+    }
+    out.subtasks = titles;
+  }
+
+  return { value: out };
+}
+
+export const MAX_SUBTASKS = 50;
+
+function subtaskTitle(value) {
+  return text(value ?? '', 'Subtask', 200, { required: true });
+}
+
+export function validateSubtaskCreate(input) {
+  if (!isObject(input)) return { error: 'Invalid request body' };
+  const r = subtaskTitle(input.title);
+  return r.error ? r : { value: { title: r.value } };
+}
+
+// PATCH body: { title?, done? }. done must be a real boolean, not 0/1 or "true".
+export function validateSubtaskPatch(input) {
+  if (!isObject(input)) return { error: 'Invalid request body' };
+  const out = {};
+  if ('title' in input) {
+    const r = subtaskTitle(input.title);
+    if (r.error) return r;
+    out.title = r.value;
+  }
+  if ('done' in input) {
+    if (typeof input.done !== 'boolean') return { error: 'done must be true or false' };
+    out.done = input.done;
+  }
+  if (!Object.keys(out).length) return { error: 'Nothing to change' };
   return { value: out };
 }
 
@@ -75,12 +109,7 @@ export function validateUpdate(input) {
   if (!isObject(input)) return { error: 'Invalid request body' };
   const r = text(input.note ?? '', 'Update', 2000, { required: true });
   if (r.error) return r;
-  const out = { note: r.value, progress: null, status: null };
-
-  if (input.progress != null) {
-    if (!validProgress(input.progress)) return { error: 'Progress must be a whole number from 0 to 100' };
-    out.progress = input.progress;
-  }
+  const out = { note: r.value, status: null };
   if (input.status != null) {
     if (!validStatus(input.status)) return { error: 'Invalid status' };
     out.status = input.status;

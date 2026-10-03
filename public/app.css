@@ -324,11 +324,10 @@ kbd {
   flex: none;
 }
 
-.progress { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; }
-.progress-track { flex: 1; height: 6px; min-width: 40px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
-.progress-fill { height: 100%; width: var(--p, 0%); border-radius: inherit; background: var(--accent); transition: width 0.3s ease; }
-.progress.complete .progress-fill { background: var(--green); }
-.progress-value { width: 32px; text-align: right; }
+.subtask-chip { display: inline-flex; align-items: center; gap: 5px; justify-self: start; color: var(--text-2); font-size: 12.5px; font-weight: 550; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.subtask-chip svg { color: var(--text-3); }
+.subtask-chip.is-none { visibility: hidden; }
+.subtask-chip.complete, .subtask-chip.complete svg { color: var(--green); }
 
 .due { font-size: 13px; color: var(--text-2); white-space: nowrap; }
 .due.soon { color: var(--orange); font-weight: 550; }
@@ -339,8 +338,8 @@ kbd {
 .list { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); overflow: hidden; }
 .list-head, .row {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) 118px 150px 118px;
-  grid-template-areas: "check main status progress due";
+  grid-template-columns: 28px minmax(0, 1fr) 118px 90px 118px;
+  grid-template-areas: "check main status subtasks due";
   align-items: center;
   column-gap: 16px;
   padding: 0 18px;
@@ -372,7 +371,7 @@ kbd {
 .row > .check { grid-area: check; }
 .row > .row-main { grid-area: main; }
 .row > .pill { grid-area: status; }
-.row > .progress { grid-area: progress; }
+.row > .subtask-chip { grid-area: subtasks; }
 .row > .due { grid-area: due; }
 .row-main {
   display: flex;
@@ -442,7 +441,6 @@ kbd {
 .card.is-done .card-title { color: var(--text-3); text-decoration: line-through; }
 .card-note { color: var(--text-3); font-size: 12.5px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .card-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.card-foot .progress { flex: 1; max-width: 140px; }
 .card-foot .due { font-size: 12px; }
 
 /* ---------- Empty / loading ---------- */
@@ -495,17 +493,42 @@ kbd {
   font-size: 22px;
   font-weight: 650;
   letter-spacing: -0.015em;
+  line-height: 1.3;
+  resize: none;
+  overflow: hidden;
+  display: block;
 }
 .title-input::placeholder, .desc-input::placeholder { color: var(--text-3); }
-.desc-input { width: 100%; min-height: 64px; padding: 6px 0; border: 0; outline: 0; background: transparent; color: var(--text-2); line-height: 1.55; resize: vertical; }
-.field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 18px 0; }
+.desc-input { width: 100%; min-height: 44px; max-height: 50vh; resize: none; padding: 6px 0; border: 0; outline: 0; background: transparent; color: var(--text-2); line-height: 1.55;  }
+.field-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; margin: 18px 0; }
+.field { min-width: 0; }
 .field { display: flex; flex-direction: column; gap: 6px; color: var(--text-2); font-size: 12px; font-weight: 600; }
 .field-row { display: flex; justify-content: space-between; }
 .field-row output { color: var(--text); font-variant-numeric: tabular-nums; }
 .input { width: 100%; height: 36px; padding: 0 11px; border: 1px solid var(--border); border-radius: 9px; background-color: var(--surface); color: var(--text); font-weight: 450; font-size: 14px; outline: 0; transition: border-color 0.12s, box-shadow 0.12s; }
 .input.select { padding-right: 30px; }
+/* iOS Safari gives date inputs an intrinsic width and centred text; make them behave like the rest. */
+input[type="date"].input { -webkit-appearance: none; appearance: none; display: block; min-width: 0; line-height: 34px; text-align: left; }
+input[type="date"].input::-webkit-date-and-time-value { text-align: left; margin: 0; }
 .input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.progress-field input[type="range"] { width: 100%; margin: 4px 0 0; accent-color: var(--accent); }
+/* ---------- Subtasks ---------- */
+.subtasks { margin: 4px 0 0; }
+.subtasks-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
+.section-label { color: var(--text-2); font-size: 12px; font-weight: 600; }
+.subtask-count { color: var(--text-3); font-size: 12px; font-variant-numeric: tabular-nums; }
+.subtask-list { list-style: none; margin: 0; padding: 0; }
+.subtask { display: flex; align-items: center; gap: 10px; min-height: 40px; border-bottom: 1px solid var(--border); }
+.subtask .check.sm { width: 22px; height: 22px; flex: none; }
+.subtask .check:disabled { cursor: default; opacity: 0.5; }
+.subtask.is-done .check { background: var(--green); border-color: var(--green); color: #fff; }
+.subtask-title { flex: 1; min-width: 0; padding: 8px 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 14px; }
+.subtask-title:focus { box-shadow: inset 0 -2px 0 var(--accent); }
+.subtask.is-done .subtask-title { color: var(--text-3); text-decoration: line-through; }
+.subtask-del { width: 32px; height: 32px; flex: none; opacity: 0; }
+.subtask:hover .subtask-del, .subtask-del:focus-visible { opacity: 1; }
+.subtask-del:hover { color: var(--red); background: var(--red-soft); }
+.subtask-add { display: flex; gap: 8px; margin-top: 10px; }
+.subtask-add .input { flex: 1; min-width: 0; }
 .form-actions { display: flex; align-items: center; gap: 8px; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border); }
 .meta { margin-left: auto; color: var(--text-3); font-size: 12px; text-align: right; }
 
@@ -662,11 +685,10 @@ kbd {
   .filters .select { width: 100%; }
   .list-head { display: none; }
   .row {
-    grid-template-columns: 24px minmax(0, 1fr) auto;
+    grid-template-columns: 24px auto minmax(0, 1fr) auto;
     grid-template-areas:
-      "check main main"
-      ". status due"
-      ". progress progress";
+      "check main main main"
+      ". status subtasks due";
     row-gap: 6px;
     column-gap: 12px;
     padding: 12px 16px 14px;
@@ -677,9 +699,34 @@ kbd {
   .column { scroll-snap-align: start; }
   .drawer-body { padding: 16px 16px 40px; }
   .drawer-head { padding-left: 16px; }
-  .field-grid { grid-template-columns: 1fr; }
+  .field-grid { gap: 10px 10px; margin: 14px 0; }
   .tl-del { opacity: 1; }
 }
+
+/* Touch screens (iPhone, iPad): no hover, so show delete buttons; 16px text in fields so
+   Safari doesn't zoom the page when one is focused; finger-sized tap targets. */
+@media (pointer: coarse) {
+  .input, .select, .search input, .desc-input, .composer textarea, .subtask-title, .mini-select { font-size: 16px; }
+  .input, .select { height: 44px; }
+  input[type="date"].input { line-height: 42px; }
+  .mini-select { height: 36px; }
+  .subtask-del, .tl-del { opacity: 1; }
+  .subtask { min-height: 48px; }
+  .subtask .check.sm { width: 26px; height: 26px; }
+  .check { width: 24px; height: 24px; }
+  .icon-btn { width: 40px; height: 40px; }
+  .btn { height: 40px; }
+  .composer-row .btn { height: 36px; }
+}
+
+/* Very narrow phones: one field per row. */
+@media (max-width: 340px) {
+  .field-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Respect the iPhone home indicator and notch. */
+.drawer-body { padding-bottom: calc(48px + env(safe-area-inset-bottom)); }
+.toasts { bottom: calc(24px + env(safe-area-inset-bottom)); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }

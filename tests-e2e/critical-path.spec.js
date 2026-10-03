@@ -3,26 +3,35 @@ import { ACCOUNT, signIn } from './helpers.js';
 
 // The one spec that proves the whole chain wires together: page gate → login page →
 // session cookie → API → D1 → back to the page.
-test('a task can be created, updated, completed and is still there after signing back in', async ({ page }) => {
+test('a task with subtasks can be created, updated, completed and is still there after signing back in', async ({ page }) => {
   await signIn(page);
 
   await page.locator('#new-task').click();
   await page.locator('#task-form [name=title]').fill('Write the quarterly report');
   await page.locator('#task-form [name=priority]').selectOption('high');
+  // Subtasks added before the task exists are drafts, created along with it.
+  for (const title of ['Outline', 'Draft sections']) {
+    await page.locator('#subtask-input').fill(title);
+    await page.locator('#subtask-input').press('Enter');
+  }
   await page.locator('#save-btn').click();
   await expect(page.locator('#timeline')).toContainText('Task created');
+  await expect(page.locator('#subtask-count')).toHaveText('0 of 2 done');
+
+  // Ticking a subtask saves at once, starts the task, and both show on the timeline.
+  await page.locator('.subtask', { has: page.locator('input[value="Outline"]') }).locator('.check').click();
+  await expect(page.locator('#subtask-count')).toHaveText('1 of 2 done');
+  await expect(page.locator('#timeline')).toContainText('Completed: Outline');
+  await expect(page.locator('#timeline')).toContainText('Status: To do → In progress');
 
   await page.locator('#update-note').fill('Draft sections agreed with the team');
-  await page.locator('#update-progress').selectOption('40');
   await page.locator('#post-update').click();
   await expect(page.locator('.tl-note')).toContainText('Draft sections agreed with the team');
-  // Posting progress on a to-do task starts it.
-  await expect(page.locator('#timeline')).toContainText('Status: To do → In progress');
   await page.keyboard.press('Escape');
 
   const row = page.locator('.row', { hasText: 'Write the quarterly report' });
   await expect(row).toContainText('Draft sections agreed with the team');
-  await expect(row).toContainText('40%');
+  await expect(row.locator('.subtask-chip')).toHaveText('1/2');
   await expect(row.locator('.pill')).toHaveText('In progress');
 
   await row.locator('.check').click();
@@ -47,7 +56,7 @@ test('a task can be created, updated, completed and is still there after signing
   await signIn(page);
   await page.locator('[data-status=done]').click();
   const done = page.locator('.row', { hasText: 'Write the quarterly report' });
-  // Marking a task done completes its progress.
   await expect(done.locator('.pill')).toHaveText('Done');
-  await expect(done).toContainText('100%');
+  // Subtasks are their own record: finishing the task doesn't tick them.
+  await expect(done.locator('.subtask-chip')).toHaveText('1/2');
 });
