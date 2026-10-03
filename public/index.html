@@ -161,6 +161,22 @@
               <option value="">No team</option>
             </select>
           </label>
+          <label class="field">
+            <span>Repeats</span>
+            <select name="recurrence" class="select input">
+              <option value="">Doesn't repeat</option>
+              <option value="weekly:1">Every week</option>
+              <option value="weekly:2">Every 2 weeks</option>
+              <option value="monthly:1">Every month</option>
+              <option value="monthly:3">Every quarter</option>
+              <option value="monthly:12">Every year</option>
+              <option value="after">After done</option>
+            </select>
+          </label>
+          <label class="field" id="repeat-days-field" hidden>
+            <span>Days after done</span>
+            <input name="repeat_days" class="input" type="number" min="1" max="365" step="1" value="7" inputmode="numeric">
+          </label>
         </div>
 
         <section class="subtasks" id="subtasks-section" aria-labelledby="subtasks-label">

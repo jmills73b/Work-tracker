@@ -940,3 +940,7 @@ input[type="date"].input::-webkit-date-and-time-value { text-align: left; margin
 .update-assist.is-busy span { display: none; }
 @media (pointer: coarse) { .update-assist { width: auto; height: 36px; } }
 .update-suggest { margin-top: 10px; }
+
+/* ---------- Recurring tasks ---------- */
+.repeat-mark { display: inline-flex; flex: none; align-items: center; color: var(--text-3); }
+.card-top .repeat-mark { margin-left: auto; }

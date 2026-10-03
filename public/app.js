@@ -14,6 +14,7 @@
     search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-3.5-3.5',
     x: 'M6 6l12 12M18 6L6 18',
     calendar: 'M8 3v3M16 3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z',
+    repeat: 'M17 2l3 3-3 3M4 11V9a4 4 0 0 1 4-4h12M7 22l-3-3 3-3M20 13v2a4 4 0 0 1-4 4H4',
     subtasks: 'M10 6h10M10 12h10M10 18h10M3.5 6l1.5 1.5L7.5 5M3.5 12l1.5 1.5 2.5-2.5M3.5 18l1.5 1.5 2.5-2.5',
   };
 
@@ -370,7 +371,8 @@
     h('button', { type: 'button', class: 'row-main', 'aria-label': `Open ${t.title}` },
       h('span', { class: 'row-title' },
         (t.priority === 'urgent' || t.priority === 'high') && h('span', { class: `prio-badge prio-${t.priority}`, text: PRIORITY[t.priority] }),
-        h('span', { class: 'text', text: t.title })),
+        h('span', { class: 'text', text: t.title }),
+        repeatMark(t)),
       h('span', { class: 'row-sub' },
         t.team_name && h('span', { class: 'tag', text: t.team_name }),
         t.last_note && h('span', { class: 'last-note', text: t.last_note }))),
@@ -456,7 +458,8 @@
     },
     h('div', { class: 'card-top' },
       h('span', { class: `prio-badge prio-${t.priority}`, text: PRIORITY[t.priority] }),
-      t.team_name && h('span', { class: 'tag', text: t.team_name })),
+      t.team_name && h('span', { class: 'tag', text: t.team_name }),
+      repeatMark(t)),
     h('div', { class: 'card-title', text: t.title }),
     cardSubtasks(t),
     t.last_note && h('div', { class: 'card-note', text: t.last_note }),
@@ -544,7 +547,7 @@
     try {
       const detail = await api(`/tasks/${encodeURIComponent(id)}`, { method: 'PATCH', body: changes });
       applyDetail(detail);
-      if (changes.status === 'done') toast('Nice — marked as done');
+      if (changes.status === 'done' && !detail.next_task) toast('Nice — marked as done');
     } catch (err) {
       state.tasks[i] = before;
       render();
@@ -552,8 +555,13 @@
     }
   }
 
-  function applyDetail({ task, updates, subtasks }) {
+  function applyDetail({ task, updates, subtasks, next_task: nextTask }) {
     upsert(task);
+    // Marking a repeating task done made the next one.
+    if (nextTask) {
+      upsert(nextTask);
+      toast(`Done. Next one is due ${shortDate(nextTask.target_date)}`);
+    }
     if (state.drawerOpen && state.current && state.current.id === task.id) {
       state.current = task;
       if (!state.dirty) fillForm(task);
@@ -639,6 +647,7 @@
     field('priority').value = t.priority;
     field('target_date').value = t.target_date || '';
     field('team_id').value = t.team_id == null ? '' : String(t.team_id);
+    setRepeatField(t.recurrence || null);
     requestAnimationFrame(() => { autoGrow(field('title')); autoGrow(field('description')); });
     setDirty(false);
   }
@@ -651,8 +660,35 @@
       priority: field('priority').value,
       target_date: field('target_date').value || null,
       team_id: field('team_id').value ? Number(field('team_id').value) : null,
+      recurrence: readRepeatField(),
     };
   }
+
+  // "Repeats" is one select, plus a number for "N days after done".
+  function setRepeatField(recurrence) {
+    const after = recurrence?.startsWith('after:');
+    field('recurrence').value = after ? 'after' : recurrence || '';
+    if (after) field('repeat_days').value = recurrence.slice(6);
+    $('#repeat-days-field').hidden = !after;
+  }
+
+  function readRepeatField() {
+    const v = field('recurrence').value;
+    if (v !== 'after') return v || null;
+    const n = Math.min(365, Math.max(1, Math.round(Number(field('repeat_days').value) || 7)));
+    return `after:${n}`;
+  }
+
+  function describeRepeat(r) {
+    if (!r) return '';
+    const [kind, raw] = r.split(':');
+    const n = Number(raw);
+    if (kind === 'weekly') return n === 1 ? 'Repeats every week' : `Repeats every ${n} weeks`;
+    if (kind === 'monthly') return { 1: 'Repeats every month', 3: 'Repeats every quarter', 12: 'Repeats every year' }[n] || `Repeats every ${n} months`;
+    return `Repeats ${n} day${n === 1 ? '' : 's'} after done`;
+  }
+
+  const repeatMark = (t) => t.recurrence && h('span', { class: 'repeat-mark', title: describeRepeat(t.recurrence), 'aria-label': describeRepeat(t.recurrence) }, icon('repeat', 13));
 
   function setDirty(dirty) {
     state.dirty = dirty;
@@ -702,7 +738,7 @@
         const detail = await api(`/tasks/${encodeURIComponent(state.current.id)}`, { method: 'PATCH', body: changes });
         setDirty(false);
         applyDetail(detail);
-        toast('Saved');
+        if (!detail.next_task) toast('Saved');
       } else {
         const subtasks = state.subtasks.map(({ title, target_date: targetDate }) => ({ title, target_date: targetDate || null }));
         const detail = await api('/tasks', { method: 'POST', body: { ...data, subtasks } });
@@ -754,7 +790,7 @@
       $('#update-status').value = '';
       closeSubtaskSuggestion();
       applyDetail(detail);
-      toast('Update posted');
+      if (!detail.next_task) toast('Update posted');
     } catch (err) {
       notify(err);
     } finally {
@@ -1621,6 +1657,7 @@
     form.addEventListener('input', (e) => {
       if (e.target === field('title') && /[\r\n]/.test(e.target.value)) e.target.value = e.target.value.replace(/[\r\n]+/g, ' ');
       if (e.target === field('target_date') && !state.current) renderSubtasks(placeDrafts(state.subtasks, e.target.value || null));
+      if (e.target === field('recurrence')) $('#repeat-days-field').hidden = e.target.value !== 'after';
       if (e.target.tagName === 'TEXTAREA') autoGrow(e.target);
       if (e.target.closest('.composer, .subtasks')) return;
       setDirty(true);

@@ -1,3 +1,5 @@
+import { validateRecurrence } from './recurrence.js';
+
 export const STATUS_LABELS = { todo: 'To do', in_progress: 'In progress', blocked: 'Blocked', done: 'Done' };
 export const PRIORITY_LABELS = { low: 'Low', medium: 'Medium', high: 'High', urgent: 'Urgent' };
 
@@ -59,6 +61,12 @@ export function validateTask(input, { partial = false } = {}) {
     if (v === null || v === '') out.target_date = null;
     else if (typeof v === 'string' && validDate(v)) out.target_date = v;
     else return { error: 'Target date must be YYYY-MM-DD' };
+  }
+
+  if ('recurrence' in input) {
+    const r = validateRecurrence(input.recurrence);
+    if (r.error) return r;
+    out.recurrence = r.value;
   }
 
   if (!partial && 'subtasks' in input) {

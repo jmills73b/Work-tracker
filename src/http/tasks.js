@@ -1,6 +1,9 @@
+import { nextOccurrence, shouldRecur } from '../domain/recurrence.js';
+import { localNow } from '../domain/reminders.js';
 import { statusAfterSubtaskChange } from '../domain/taskChanges.js';
 import { validateSubtaskCreate, validateSubtaskPatch, validateTask, validateUpdate } from '../domain/taskValidation.js';
 import * as tasksRepo from '../infra/tasksRepo.js';
+import { getSettings } from '../infra/remindersRepo.js';
 import { findTeam } from '../infra/teamsRepo.js';
 import { json } from './respond.js';
 
@@ -33,11 +36,32 @@ export async function patch(request, env, user, id) {
   if (!existing) return notFound();
   const team = value.team_id != null ? await findTeam(env, value.team_id) : null;
   if (value.team_id != null && !team) return bad('Unknown team');
-  const stmts = tasksRepo.changeStatements(env, user.id, existing, value, now(), {
+  const at = now();
+  const stmts = tasksRepo.changeStatements(env, user.id, existing, value, at, {
     teamName: (tid) => (tid === existing.team_id ? existing.team_name : team?.name) ?? `team ${tid}`,
   });
-  if (stmts.length) await env.DB.batch(stmts);
-  return json(await tasksRepo.taskDetail(env, user.id, id));
+  const next = await recurStatements(env, user, existing, value, at);
+  if (stmts.length) await env.DB.batch([...stmts, ...next.statements]);
+  return detailWithNext(env, user, id, stmts.length ? next.id : null);
+}
+
+// Marking a recurring task done creates the next occurrence, in the same batch as the
+// status change. Dates are worked out in the person's own time zone (their reminder
+// setting, London by default).
+async function recurStatements(env, user, existing, fields, at) {
+  if (!shouldRecur(existing, fields)) return { id: null, statements: [] };
+  const [settings, subtasks] = await Promise.all([getSettings(env, user.id), tasksRepo.listSubtasks(env, user.id, existing.id)]);
+  const task = { ...existing, ...fields };
+  const next = nextOccurrence(task, subtasks, localNow(new Date(at), settings.time_zone).date);
+  return tasksRepo.nextOccurrenceStatements(env, user.id, existing, next, at);
+}
+
+// The task's detail, plus the new occurrence (with its subtasks) when one was made, so
+// the page can show it straight away.
+async function detailWithNext(env, user, id, nextId, status = 200) {
+  const detail = await tasksRepo.taskDetail(env, user.id, id);
+  const next = nextId ? await tasksRepo.taskDetail(env, user.id, nextId) : null;
+  return json(next ? { ...detail, next_task: next.task } : detail, status);
 }
 
 export async function remove(env, user, id) {
@@ -56,8 +80,9 @@ export async function postUpdate(request, env, user, id) {
   const stmts = tasksRepo.changeStatements(env, user.id, existing, fields, at);
   if (!stmts.length) stmts.push(tasksRepo.touchTask(env, user.id, id, at));
   stmts.push(tasksRepo.insertUpdate(env, { userId: user.id, taskId: id, kind: 'note', ...value, at }));
-  await env.DB.batch(stmts);
-  return json(await tasksRepo.taskDetail(env, user.id, id), 201);
+  const next = await recurStatements(env, user, existing, fields, at);
+  await env.DB.batch([...stmts, ...next.statements]);
+  return detailWithNext(env, user, id, next.id, 201);
 }
 
 export async function removeUpdate(env, user, id, updateId) {

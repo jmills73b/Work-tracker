@@ -2,7 +2,7 @@ import { planTaskChanges } from '../domain/taskChanges.js';
 
 const TASK_COLUMNS = `
   t.id, t.title, t.description, t.status, t.priority, t.target_date,
-  t.team_id, (SELECT tm.name FROM teams tm WHERE tm.id = t.team_id) AS team_name,
+  t.team_id, (SELECT tm.name FROM teams tm WHERE tm.id = t.team_id) AS team_name, t.recurrence, t.next_task_id,
   t.created_at, t.updated_at, t.completed_at,
   (SELECT COUNT(*) FROM subtasks s WHERE s.task_id = t.id) AS subtask_total,
   (SELECT COUNT(*) FROM subtasks s WHERE s.task_id = t.id AND s.done = 1) AS subtask_done,
@@ -68,14 +68,41 @@ export async function createTask(env, userId, t, at) {
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO tasks (id, user_id, title, description, status, priority, target_date,
-                          team_id, created_at, updated_at, completed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                          team_id, recurrence, created_at, updated_at, completed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(id, userId, t.title, t.description, t.status, t.priority, t.target_date,
-      t.team_id, at, at, t.status === 'done' ? at : null),
+      t.team_id, t.recurrence ?? null, at, at, t.status === 'done' ? at : null),
     insertUpdate(env, { userId, taskId: id, kind: 'change', note: 'Task created', at }),
     ...(t.subtasks || []).map((st, position) => insertSubtask(env, { userId, taskId: id, ...st, position, at })),
   ]);
   return id;
+}
+
+// Marking a recurring task done: the statements that create the next occurrence (same
+// batch as the status change) and point the done task at it. Returns { id, statements }.
+export function nextOccurrenceStatements(env, userId, existing, next, at) {
+  const id = crypto.randomUUID();
+  return {
+    id,
+    statements: [
+      env.DB.prepare(
+        `INSERT INTO tasks (id, user_id, title, description, status, priority, target_date,
+                            team_id, recurrence, created_at, updated_at, completed_at)
+         VALUES (?, ?, ?, ?, 'todo', ?, ?, ?, ?, ?, ?, NULL)`,
+      ).bind(id, userId, next.title, next.description, next.priority, next.target_date, next.team_id, next.recurrence, at, at),
+      insertUpdate(env, { userId, taskId: id, kind: 'change', note: 'Created from the previous occurrence', at }),
+      ...next.subtasks.map((st, position) => insertSubtask(env, { userId, taskId: id, ...st, position, at })),
+      env.DB.prepare('UPDATE tasks SET next_task_id = ? WHERE id = ? AND user_id = ?').bind(id, existing.id, userId),
+      insertUpdate(env, { userId, taskId: existing.id, kind: 'change', note: `Next occurrence created, due ${next.target_date}`, at }),
+    ],
+  };
+}
+
+export async function listSubtasks(env, userId, taskId) {
+  const { results } = await env.DB.prepare(
+    `SELECT ${SUBTASK_COLUMNS} FROM subtasks WHERE task_id = ? AND user_id = ? ORDER BY position, created_at`,
+  ).bind(taskId, userId).all();
+  return results;
 }
 
 // Statements for an UPDATE plus change-log lines; [] when nothing actually changed.
