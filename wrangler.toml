@@ -12,5 +12,5 @@ run_worker_first = true
 [[d1_databases]]
 binding = "DB"
 database_name = "work-tracker"
-database_id = "00000000-0000-0000-0000-000000000000"   # filled in by scripts/ensure-cloudflare.mjs
+database_id = "e12af7da-e7ba-4634-b756-cba34b4e165c"   # filled in by scripts/ensure-cloudflare.mjs
 migrations_dir = "migrations"
