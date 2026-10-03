@@ -86,6 +86,10 @@ jobs:
         if: steps.token.outputs.ready == 'true'
         run: npx wrangler deploy
 
+      - name: Make sure the reminders key pair exists
+        if: steps.token.outputs.ready == 'true'
+        run: node scripts/ensure-vapid.mjs
+
       - name: Smoke test the live site
         if: steps.token.outputs.ready == 'true'
         run: |

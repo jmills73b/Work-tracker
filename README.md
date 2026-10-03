@@ -6,6 +6,7 @@ A clean, private tracker for your own tasks. Capture a task, set its priority an
 - **Board view**: drag cards between To do, In progress, Blocked and Done
 - **Summary tiles** (Active, In progress, Due this week, Overdue, Done in the last 30 days). Click a tile to filter by it
 - **Subtasks**: a checklist under each task, each with an optional due date. Shown as "2/5" in the list, and listed on board cards where they can be ticked off
+- **Reminders**: a morning digest on your phone of what's overdue and due today (plus Urgent and High tasks due tomorrow). Free web push, set up from your name menu → Reminders
 - **Quick add**: type `Board deck fri !high #Leadership` and it becomes a High task due Friday in Leadership, with a preview before saving
 - **Templates**: save any task as a template, then start new tasks from it with the subtask dates laid out again
 - **Task drawer** for editing and posting updates. Status, priority, date and subtask changes are logged automatically

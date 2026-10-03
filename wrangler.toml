@@ -9,6 +9,14 @@ directory = "public"
 binding = "ASSETS"
 run_worker_first = true
 
+# The VAPID key pair is the secret VAPID_PRIVATE_JWK (set once by scripts/ensure-vapid.mjs).
+[vars]
+VAPID_SUBJECT = "https://work-tracker.jmills1983-1aa.workers.dev"
+
+# Every 15 minutes: send each user's morning digest once their local digest time passes.
+[triggers]
+crons = ["*/15 * * * *"]
+
 [[d1_databases]]
 binding = "DB"
 database_name = "work-tracker"

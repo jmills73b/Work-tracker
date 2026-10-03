@@ -9,11 +9,13 @@
     "db:migrate:local": "wrangler d1 migrations apply work-tracker --local",
     "db:migrate": "wrangler d1 migrations apply work-tracker --remote",
     "deploy": "wrangler deploy",
-    "cf:ensure": "NODE_USE_ENV_PROXY=1 NODE_NO_WARNINGS=1 node scripts/ensure-cloudflare.mjs"
+    "cf:ensure": "NODE_USE_ENV_PROXY=1 NODE_NO_WARNINGS=1 node scripts/ensure-cloudflare.mjs",
+    "cf:vapid": "node scripts/ensure-vapid.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.1",
     "vitest": "^3.2.7",
+    "web-push": "^3.6.7",
     "wrangler": "^4.0.0"
   }
 }

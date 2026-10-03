@@ -993,6 +993,149 @@
     if (p.title) setDirty(true);
   }
 
+  /* ---------- Reminders ---------- */
+
+  let pushConfig = null;
+  const remindersForm = () => $('#reminders-form');
+
+  function deviceTimeZone() {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/London';
+    } catch {
+      return 'Europe/London';
+    }
+  }
+
+  // iPadOS reports itself as a Mac, so touch points tell them apart.
+  const isAppleTouch = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isStandalone = () => navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+  const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+
+  function b64urlToBytes(text) {
+    const b64 = text.replace(/-/g, '+').replace(/_/g, '/');
+    return Uint8Array.from(atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4)), (c) => c.charCodeAt(0));
+  }
+
+  function registerServiceWorker() {
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => { /* reminders will say so */ });
+  }
+
+  async function deviceSubscription() {
+    if (!pushSupported()) return null;
+    const reg = await navigator.serviceWorker.getRegistration();
+    return reg ? reg.pushManager.getSubscription() : null;
+  }
+
+  function fillReminderForm() {
+    const f = remindersForm().elements;
+    f.namedItem('enabled').checked = pushConfig.settings.enabled;
+    f.namedItem('digest_time').value = pushConfig.settings.digest_time;
+    f.namedItem('include_tomorrow').checked = pushConfig.settings.include_tomorrow;
+    $('#reminders-tz').textContent = `Times are in ${deviceTimeZone().replace(/_/g, ' ')}. Nothing is sent on a day with nothing due.`;
+  }
+
+  async function renderPushStatus() {
+    const sub = await deviceSubscription();
+    const here = Boolean(sub && pushConfig.endpoints.includes(sub.endpoint));
+    const others = pushConfig.devices - (here ? 1 : 0);
+    let message;
+    let canEnable = false;
+    if (!pushConfig.public_key) message = 'Reminders are not set up on the server yet.';
+    else if (isAppleTouch() && !isStandalone()) {
+      message = 'On iPhone and iPad, first add this app to your Home Screen: tap Share, then "Add to Home Screen". Open it from there and turn reminders on.';
+    } else if (!pushSupported()) message = "This browser can't receive notifications.";
+    else if (Notification.permission === 'denied') message = 'Notifications are blocked for this site. Allow them in your device or browser settings, then come back.';
+    else {
+      canEnable = true;
+      message = here
+        ? `On for this device${others ? ` and ${others} other${others === 1 ? '' : 's'}` : ''}.`
+        : others ? `On for ${others} other device${others === 1 ? '' : 's'}; off on this one.` : 'Off. Turn it on to get your morning digest on this device.';
+    }
+    $('#reminders-status').textContent = message;
+    $('#push-enable').hidden = here;
+    $('#push-enable').disabled = !canEnable;
+    $('#push-disable').hidden = !here;
+    $('#push-test').hidden = !pushConfig.devices || !pushConfig.public_key;
+  }
+
+  async function openReminders() {
+    closeMenu();
+    $('#reminders-error').hidden = true;
+    $('#reminders-status').textContent = 'Loading…';
+    $('#reminders-dialog').showModal();
+    try {
+      pushConfig = await api('/push/config');
+      fillReminderForm();
+      await renderPushStatus();
+    } catch (err) {
+      if (!err.silent) showFormError($('#reminders-error'), err.message);
+    }
+  }
+
+  async function enablePush() {
+    $('#reminders-error').hidden = true;
+    try {
+      // Ask straight from the tap: Safari only shows the prompt during a user gesture.
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') return renderPushStatus();
+      const reg = await navigator.serviceWorker.register('/sw.js');
+      await navigator.serviceWorker.ready;
+      const sub = (await reg.pushManager.getSubscription())
+        || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64urlToBytes(pushConfig.public_key) });
+      await api('/push/subscriptions', { method: 'POST', body: { ...sub.toJSON(), time_zone: deviceTimeZone() } });
+      pushConfig = await api('/push/config');
+      fillReminderForm();
+      await renderPushStatus();
+      toast('Reminders on for this device');
+    } catch (err) {
+      if (!err.silent) showFormError($('#reminders-error'), err.message || "Couldn't turn reminders on");
+    }
+  }
+
+  async function disablePush() {
+    try {
+      const sub = await deviceSubscription();
+      if (sub) {
+        await api('/push/subscriptions', { method: 'DELETE', body: { endpoint: sub.endpoint } });
+        await sub.unsubscribe();
+      }
+      pushConfig = await api('/push/config');
+      await renderPushStatus();
+      toast('Reminders off for this device');
+    } catch (err) {
+      if (!err.silent) showFormError($('#reminders-error'), err.message);
+    }
+  }
+
+  async function sendTestPush() {
+    try {
+      const { sent, failed } = await api('/push/test', { method: 'POST', body: {} });
+      toast(failed ? `Test sent to ${sent}; ${failed} device${failed === 1 ? '' : 's'} didn't accept it` : `Test sent to ${sent} device${sent === 1 ? '' : 's'}`);
+    } catch (err) {
+      if (!err.silent) showFormError($('#reminders-error'), err.message);
+    }
+  }
+
+  async function saveReminderSettings(e) {
+    e.preventDefault();
+    const f = remindersForm().elements;
+    try {
+      const { settings } = await api('/push/settings', {
+        method: 'PUT',
+        body: {
+          enabled: f.namedItem('enabled').checked,
+          digest_time: f.namedItem('digest_time').value,
+          include_tomorrow: f.namedItem('include_tomorrow').checked,
+          time_zone: deviceTimeZone(),
+        },
+      });
+      pushConfig.settings = settings;
+      toast('Reminder settings saved');
+    } catch (err) {
+      if (!err.silent) showFormError($('#reminders-error'), err.message);
+    }
+  }
+
   /* ---------- Templates ---------- */
 
   // The date `days` after an ISO date (negative = before); null when either is missing.
@@ -1176,6 +1319,7 @@
     renderTemplatePicker();
     state.loaded = true;
     render();
+    registerServiceWorker();
   }
 
   async function signOut() {
@@ -1264,6 +1408,12 @@
     $('#user-button').addEventListener('click', (e) => { e.stopPropagation(); toggleMenu(); });
     $('#sign-out-btn').addEventListener('click', signOut);
     $('#change-password-btn').addEventListener('click', openPasswordDialog);
+    $('#reminders-btn').addEventListener('click', openReminders);
+    $('#reminders-close').addEventListener('click', () => $('#reminders-dialog').close());
+    $('#reminders-form').addEventListener('submit', saveReminderSettings);
+    $('#push-enable').addEventListener('click', enablePush);
+    $('#push-disable').addEventListener('click', disablePush);
+    $('#push-test').addEventListener('click', sendTestPush);
     $('#templates-btn').addEventListener('click', () => { closeMenu(); renderTemplateList(); $('#templates-dialog').showModal(); });
     $('#templates-close').addEventListener('click', () => $('#templates-dialog').close());
     $('#invite-btn').addEventListener('click', openInviteDialog);

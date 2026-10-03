@@ -527,6 +527,12 @@ input[type="date"].input::-webkit-date-and-time-value { text-align: left; margin
 .quick-preview .qp-title { font-weight: 600; color: var(--text); }
 .quick-preview .qp-empty { color: var(--text-3); }
 
+/* ---------- Reminders ---------- */
+.reminder-status { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); color: var(--text-2); font-size: 13px; line-height: 1.45; }
+.reminder-device { display: flex; flex-wrap: wrap; gap: 8px; }
+.check-row { display: flex; align-items: flex-start; gap: 10px; color: var(--text); font-size: 14px; line-height: 1.4; cursor: pointer; }
+.check-row input { width: 20px; height: 20px; margin: 0; flex: none; accent-color: var(--accent); }
+
 /* ---------- Templates ---------- */
 .template-pick { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 14px; padding: 8px 12px; border-radius: 10px; background: var(--accent-soft); color: var(--text-2); font-size: 12.5px; font-weight: 600; }
 .template-pick .select { max-width: 60%; }

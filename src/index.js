@@ -1,15 +1,20 @@
 import * as admin from './http/admin.js';
 import * as auth from './http/auth.js';
 import { json, redirect, text, withSecurityHeaders } from './http/respond.js';
+import * as push from './http/push.js';
 import * as tasks from './http/tasks.js';
 import * as templates from './http/templates.js';
 import { getSessionUser } from './infra/auth.js';
+import { runDigests } from './reminders.js';
 
 // Reachable without a session. Everything else is denied by default: a new page is
 // protected the moment it exists, with no list to remember to update.
 export const PUBLIC_PATHS = new Set([
   '/login', '/login.html', '/login.js', '/app.css', '/favicon.svg',
   '/manifest.webmanifest', '/icon-180.png', '/icon-512.png', '/robots.txt',
+  // The service worker holds no data; keeping it public lets the browser update it even
+  // after the session cookie has expired.
+  '/sw.js',
 ]);
 const LOGIN_PAGES = new Set(['/login', '/login.html']);
 
@@ -22,6 +27,11 @@ export default {
       console.error(e);
       return withSecurityHeaders(text('Something went wrong', 500));
     }
+  },
+
+  // Cron Trigger (wrangler.toml): the morning digest.
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runDigests(env, new Date(event.scheduledTime)));
   },
 };
 
@@ -71,6 +81,14 @@ async function api(request, env, user, method, path) {
     if (method === 'GET') return admin.listInvites(env, user);
     if (method === 'POST') return admin.createInvite(env, user);
   }
+
+  if (path === '/api/push/config' && method === 'GET') return push.config(env, user);
+  if (path === '/api/push/settings' && method === 'PUT') return push.putSettings(request, env, user);
+  if (path === '/api/push/subscriptions') {
+    if (method === 'POST') return push.subscribe(request, env, user);
+    if (method === 'DELETE') return push.unsubscribe(request, env, user);
+  }
+  if (path === '/api/push/test' && method === 'POST') return push.test(env, user);
 
   if (path === '/api/templates') {
     if (method === 'GET') return templates.list(env, user);
