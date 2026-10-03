@@ -12,6 +12,8 @@ const TOKEN = process.env.CLOUDFLARE_API_TOKEN;
 const DB_NAME = 'work-tracker';
 const WORKER_NAME = 'work-tracker';
 const TOML = new URL('../wrangler.toml', import.meta.url);
+const NEEDS_WORKERS_EDIT =
+  'The Cloudflare API token cannot manage Workers. Edit the token (My Profile → API Tokens) and add Account → Workers Scripts → Edit.';
 
 const fail = (msg) => {
   console.error(`✖ ${msg}`);
@@ -50,7 +52,7 @@ try {
   await api('GET', `${A}/workers/scripts`);
 } catch (e) {
   if (e.status === 401 || e.status === 403) {
-    fail('The Cloudflare API token cannot manage Workers. Edit the token (My Profile → API Tokens) and add Account → Workers Scripts → Edit.');
+    fail(NEEDS_WORKERS_EDIT);
   }
   throw e;
 }
@@ -71,6 +73,7 @@ let subdomain;
 try {
   subdomain = (await api('GET', `${A}/workers/subdomain`)).subdomain;
 } catch (e) {
+  if (e.status === 401 || e.status === 403) fail(NEEDS_WORKERS_EDIT);
   if (e.status !== 404) throw e;
 }
 if (!subdomain) {
