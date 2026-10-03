@@ -28,7 +28,25 @@ No frameworks and no third-party scripts. The front end is plain HTML, CSS and J
 - **Strict security headers** (`public/_headers`): a Content Security Policy that only allows the site's own files, HSTS, no framing, `nosniff`, and no-referrer. User text is only ever written to the page as plain text, never as HTML.
 - **Server-side validation** of every field, and parameterised SQL everywhere.
 
-## Deploy (Cloudflare dashboard, about 15 minutes)
+## Deploy with one command (recommended)
+
+1. Create a Cloudflare API token (**My Profile → API Tokens → Create Token → Custom token**) with these **Account** permissions:
+   - D1: Edit
+   - Cloudflare Pages: Edit
+   - Access: Apps and Policies: Edit
+   - Access: Organizations, Identity Providers, and Groups: Edit
+   - Account Settings: Read
+2. Run:
+
+```bash
+npm install
+CLOUDFLARE_API_TOKEN=<token> npm run setup -- you@example.com
+# first time using Zero Trust on this account? add ACCESS_TEAM_NAME=<pick-a-name>
+```
+
+The script creates the D1 database and its tables, the Pages project, the Zero Trust login (one-time PIN emailed to you) and an Access application that only allows your email. It then writes the IDs into `wrangler.toml` and deploys the site. It's safe to re-run, and it reuses anything that already exists. Commit the updated `wrangler.toml` afterwards.
+
+## Deploy manually (Cloudflare dashboard, about 15 minutes)
 
 ### 1. Create the database
 1. Cloudflare dashboard → **Storage & Databases → D1 → Create database**. Name it `work-tracker`.
