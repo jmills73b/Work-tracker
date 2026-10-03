@@ -5,7 +5,7 @@ A clean, private tracker for your own tasks. Capture a task, set its priority an
 - **List view** with priority stripes, status pills, and overdue / due-soon highlighting
 - **Board view**: drag cards between To do, In progress, Blocked and Done
 - **Summary tiles** (Active, In progress, Due this week, Overdue, Done in the last 30 days). Click a tile to filter by it
-- **Subtasks**: a checklist under each task, shown as "2/5" in the list and on cards
+- **Subtasks**: a checklist under each task, each with an optional due date. Shown as "2/5" in the list, and listed on board cards where they can be ticked off
 - **Task drawer** for editing and posting updates. Status, priority, date and subtask changes are logged automatically
 - Search, filters, sorting, light/dark mode. Laid out for iPhone and iPad as well as desktop, and can be added to the Home Screen
 - Email and password sign-in. The first account is the admin and can invite others; everyone's tasks are private

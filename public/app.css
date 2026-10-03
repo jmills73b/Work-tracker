@@ -403,7 +403,8 @@ kbd {
   transition: all 0.15s;
 }
 .check:hover { border-color: var(--green); color: var(--green); }
-.is-done .check { background: var(--green); border-color: var(--green); color: #fff; }
+/* Only the item's own tick: a finished task must not make its subtasks look ticked. */
+.row.is-done > .check, .card-subtask.is-done > .check { background: var(--green); border-color: var(--green); color: #fff; }
 
 /* ---------- Board view ---------- */
 .board { display: grid; grid-template-columns: repeat(4, minmax(250px, 1fr)); gap: 14px; overflow-x: auto; padding-bottom: 6px; }
@@ -440,6 +441,14 @@ kbd {
 .card-title { font-weight: 580; line-height: 1.38; overflow-wrap: anywhere; }
 .card.is-done .card-title { color: var(--text-3); text-decoration: line-through; }
 .card-note { color: var(--text-3); font-size: 12.5px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* Subtasks on board cards, tickable in place. */
+.card-subtasks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.card-subtask { display: flex; align-items: center; gap: 8px; min-height: 28px; font-size: 13px; }
+.check.xs { width: 18px; height: 18px; flex: none; }
+.card-subtask-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-subtask.is-done .card-subtask-title { color: var(--text-3); text-decoration: line-through; }
+.card-subtask .due { font-size: 11.5px; flex: none; }
+.card-subtask-more { padding-left: 26px; color: var(--text-3); font-size: 12px; }
 .card-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .card-foot .due { font-size: 12px; }
 
@@ -527,6 +536,43 @@ input[type="date"].input::-webkit-date-and-time-value { text-align: left; margin
 .subtask-del { width: 32px; height: 32px; flex: none; opacity: 0; }
 .subtask:hover .subtask-del, .subtask-del:focus-visible { opacity: 1; }
 .subtask-del:hover { color: var(--red); background: var(--red-soft); }
+/* Date chip: a native date input laid transparently over a label, so a tap opens the
+   device's own picker while the chip shows a friendly "Oct 12" / "2d overdue". */
+.date-chip-wrap { display: inline-flex; align-items: center; flex: none; }
+.date-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 550;
+  white-space: nowrap;
+}
+.date-chip.unset { background: transparent; color: var(--text-3); box-shadow: inset 0 0 0 1px var(--border); }
+.date-chip.soon { background: var(--orange-soft); color: var(--orange); }
+.date-chip.overdue { background: var(--red-soft); color: var(--red); }
+.date-chip.muted { color: var(--text-3); }
+.date-chip-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  font-size: 16px;
+}
+.date-chip:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+.date-clear { width: 26px; height: 26px; margin-left: 2px; }
 .subtask-add { display: flex; gap: 8px; margin-top: 10px; }
 .subtask-add .input { flex: 1; min-width: 0; }
 .form-actions { display: flex; align-items: center; gap: 8px; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border); }
@@ -701,6 +747,18 @@ input[type="date"].input::-webkit-date-and-time-value { text-align: left; margin
   .drawer-head { padding-left: 16px; }
   .field-grid { gap: 10px 10px; margin: 14px 0; }
   .tl-del { opacity: 1; }
+  /* Phones: the date drops under the title so the title keeps the width. */
+  .subtask {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: "check title del" ". date date";
+    column-gap: 10px;
+    align-items: center;
+  }
+  .subtask > .check { grid-area: check; }
+  .subtask > .subtask-title { grid-area: title; }
+  .subtask > .subtask-del { grid-area: del; }
+  .subtask > .date-chip-wrap { grid-area: date; justify-self: start; margin: -4px 0 8px; }
 }
 
 /* Touch screens (iPhone, iPad): no hover, so show delete buttons; 16px text in fields so
@@ -713,6 +771,9 @@ input[type="date"].input::-webkit-date-and-time-value { text-align: left; margin
   .subtask-del, .tl-del { opacity: 1; }
   .subtask { min-height: 48px; }
   .subtask .check.sm { width: 26px; height: 26px; }
+  .check.xs { width: 24px; height: 24px; }
+  .card-subtask { min-height: 36px; }
+  .date-chip { height: 32px; }
   .check { width: 24px; height: 24px; }
   .icon-btn { width: 40px; height: 40px; }
   .btn { height: 40px; }

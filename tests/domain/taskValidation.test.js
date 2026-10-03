@@ -34,8 +34,14 @@ describe('validateTask', () => {
 });
 
 describe('validateTask subtasks', () => {
-  it('accepts a list of subtask titles on create, trimmed', () => {
-    expect(validateTask({ title: 'T', subtasks: [' Draft ', 'Review'] }).value.subtasks).toEqual(['Draft', 'Review']);
+  it('accepts plain titles or { title, target_date } on create, trimmed', () => {
+    expect(validateTask({ title: 'T', subtasks: [' Draft ', { title: 'Review', target_date: '2026-10-20' }] }).value.subtasks)
+      .toEqual([{ title: 'Draft', target_date: null }, { title: 'Review', target_date: '2026-10-20' }]);
+  });
+
+  it('refuses an impossible date on a subtask in a new task', () => {
+    expect(validateTask({ title: 'T', subtasks: [{ title: 'x', target_date: '2026-13-01' }] }).error)
+      .toBe('Target date must be YYYY-MM-DD');
   });
 
   it('refuses a blank subtask title rather than creating an empty row', () => {
@@ -70,6 +76,23 @@ describe('validateSubtaskPatch', () => {
     expect(validateSubtaskPatch({}).error).toBe('Nothing to change');
   });
 
+  it('reads target_date: null as "clear the date", which is a change', () => {
+    expect(validateSubtaskPatch({ target_date: null }).value).toEqual({ target_date: null });
+  });
+
+  it('treats an empty date from the picker the same as null', () => {
+    expect(validateSubtaskPatch({ target_date: '' }).value).toEqual({ target_date: null });
+  });
+
+  it('leaves the date out of the change when the key is missing', () => {
+    // Renaming must not wipe a date the request never mentioned.
+    expect(validateSubtaskPatch({ title: 'Renamed' }).value).toEqual({ title: 'Renamed' });
+  });
+
+  it('refuses a date that does not exist', () => {
+    expect(validateSubtaskPatch({ target_date: '2026-02-30' }).error).toBe('Target date must be YYYY-MM-DD');
+  });
+
   it('refuses renaming a subtask to blank', () => {
     expect(validateSubtaskPatch({ title: '   ' }).error).toBe('Subtask is required');
   });
@@ -78,6 +101,10 @@ describe('validateSubtaskPatch', () => {
 describe('validateSubtaskCreate', () => {
   it('requires a title', () => {
     expect(validateSubtaskCreate({ title: null }).error).toBe('Subtask is required');
+  });
+
+  it('gives a subtask with no date an explicit null, not undefined', () => {
+    expect(validateSubtaskCreate({ title: 'x' }).value).toEqual({ title: 'x', target_date: null });
   });
 });
 

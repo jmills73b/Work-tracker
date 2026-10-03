@@ -13,6 +13,7 @@
     clipboard: 'M9 4h6v3H9zM9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 13l2 2 4-4',
     search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-3.5-3.5',
     x: 'M6 6l12 12M18 6L6 18',
+    calendar: 'M8 3v3M16 3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z',
     subtasks: 'M10 6h10M10 12h10M10 18h10M3.5 6l1.5 1.5L7.5 5M3.5 12l1.5 1.5 2.5-2.5M3.5 18l1.5 1.5 2.5-2.5',
   };
 
@@ -361,9 +362,35 @@
       h('span', { class: `prio-badge prio-${t.priority}`, text: PRIORITY[t.priority] }),
       t.category && h('span', { class: 'tag', text: t.category })),
     h('div', { class: 'card-title', text: t.title }),
+    cardSubtasks(t),
     t.last_note && h('div', { class: 'card-note', text: t.last_note }),
     h('div', { class: 'card-foot' }, subtaskChip(t), dueLabel(t)));
     return card;
+  }
+
+  const CARD_SUBTASK_LIMIT = 6;
+
+  function cardSubtasks(t) {
+    const list = t.subtasks || [];
+    if (!list.length) return null;
+    const shown = list.slice(0, CARD_SUBTASK_LIMIT);
+    return h('ul', { class: 'card-subtasks' },
+      shown.map((st) => {
+        const due = st.target_date && !st.done ? dueInfo({ target_date: st.target_date, status: 'todo' }) : null;
+        return h('li', { class: `card-subtask${st.done ? ' is-done' : ''}` },
+          h('button', {
+            type: 'button',
+            class: 'check xs',
+            title: st.done ? 'Mark as not done' : 'Mark as done',
+            'aria-label': `${st.done ? 'Mark not done' : 'Mark done'}: ${st.title}`,
+            // The card itself opens the task; a tick here must only tick.
+            onclick: (e) => { e.stopPropagation(); toggleSubtaskOf(t.id, st.id); },
+            onkeydown: (e) => e.stopPropagation(),
+          }, icon('check', 10)),
+          h('span', { class: 'card-subtask-title', text: st.title }),
+          due && h('span', { class: `due ${due.cls}`, title: due.title, text: shortDate(st.target_date) }));
+      }),
+      list.length > shown.length && h('li', { class: 'card-subtask-more', text: `+${list.length - shown.length} more` }));
   }
 
   function emptyState(firstRun) {
@@ -571,7 +598,7 @@
         applyDetail(detail);
         toast('Saved');
       } else {
-        const subtasks = state.subtasks.map((st) => st.title);
+        const subtasks = state.subtasks.map(({ title, target_date: targetDate }) => ({ title, target_date: targetDate || null }));
         const detail = await api('/tasks', { method: 'POST', body: { ...data, subtasks } });
         upsert(detail.task);
         setDirty(false);
@@ -671,10 +698,67 @@
         onclick: () => toggleSubtask(i),
       }, icon('check', 12)),
       title,
+      dateChip(st.target_date, (value) => setSubtaskDate(i, value), { done: Boolean(st.done) }),
       h('button', {
         type: 'button', class: 'icon-btn subtask-del', title: 'Delete subtask', 'aria-label': `Delete subtask: ${st.title}`,
         onclick: () => removeSubtask(i),
       }, icon('x', 15)));
+  }
+
+  // A friendly date label with the device's own date picker laid transparently over it.
+  // Tapping opens the picker (on desktop, showPicker() does the same); a set date also
+  // gets a small clear button.
+  function dateChip(value, onChange, { done = false } = {}) {
+    const info = value ? dueInfo({ target_date: value, status: done ? 'done' : 'todo' }) : null;
+    const input = h('input', {
+      type: 'date',
+      class: 'date-chip-input',
+      value: value || '',
+      'aria-label': value ? `Due ${shortDate(value)}. Change date` : 'Add a due date',
+    });
+    input.addEventListener('click', () => { try { input.showPicker(); } catch { /* not supported: native tap opens it */ } });
+    input.addEventListener('change', () => onChange(input.value || null));
+    return h('span', { class: 'date-chip-wrap' },
+      h('span', { class: `date-chip ${info ? info.cls || 'set' : 'unset'}`, title: info?.title || (value ? shortDate(value) : 'Add a due date') },
+        icon('calendar', 13),
+        info ? h('span', { text: info.label === 'No date' ? shortDate(value) : info.label }) : h('span', { class: 'date-chip-placeholder', text: 'Date' }),
+        input),
+      value && h('button', {
+        type: 'button', class: 'icon-btn date-clear', title: 'Remove date', 'aria-label': 'Remove date', onclick: () => onChange(null),
+      }, icon('x', 12)));
+  }
+
+  async function setSubtaskDate(i, value) {
+    const st = state.subtasks[i];
+    if (!st || (st.target_date || null) === value) return;
+    if (!state.current) {
+      renderSubtasks(state.subtasks.map((x, j) => (j === i ? { ...x, target_date: value } : x)));
+      return;
+    }
+    try {
+      applyDetail(await api(subtaskPath(st.id), { method: 'PATCH', body: { target_date: value } }));
+    } catch (err) {
+      notify(err);
+    }
+  }
+
+  // Tick a subtask from outside the drawer (board cards): optimistic, then the server's copy.
+  async function toggleSubtaskOf(taskId, subtaskId) {
+    const before = state.tasks.find((x) => x.id === taskId);
+    const st = before?.subtasks?.find((x) => x.id === subtaskId);
+    if (!st) return;
+    const subtasks = before.subtasks.map((x) => (x.id === subtaskId ? { ...x, done: x.done ? 0 : 1 } : x));
+    upsert({ ...before, subtasks, subtask_done: subtasks.filter((x) => x.done).length });
+    render();
+    try {
+      applyDetail(await api(`/tasks/${encodeURIComponent(taskId)}/subtasks/${encodeURIComponent(subtaskId)}`, {
+        method: 'PATCH', body: { done: !st.done },
+      }));
+    } catch (err) {
+      upsert(before);
+      render();
+      notify(err);
+    }
   }
 
   async function addSubtask() {

@@ -67,7 +67,7 @@ export async function addSubtask(request, env, user, id) {
   if (!(await tasksRepo.getTask(env, user.id, id))) return notFound();
   const at = now();
   await env.DB.batch([
-    tasksRepo.insertSubtask(env, { userId: user.id, taskId: id, title: value.title, at }),
+    tasksRepo.insertSubtask(env, { userId: user.id, taskId: id, ...value, at }),
     tasksRepo.touchTask(env, user.id, id, at),
   ]);
   return json(await tasksRepo.taskDetail(env, user.id, id), 201);

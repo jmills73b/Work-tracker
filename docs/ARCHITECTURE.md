@@ -30,14 +30,16 @@ tests-e2e/            Playwright specs against a local Worker and a fresh local 
 - On a saved task, each subtask change saves immediately. While a task is being created they are drafts, sent with the create as `subtasks: [titles]`.
 - Ticking a subtask on a **To do** task moves it to **In progress**. A blocked or done task is left alone (`statusAfterSubtaskChange`). Ticking and un-ticking add "Completed: …" / "Reopened: …" lines to the timeline. Renaming doesn't.
 - Marking a task done does not tick its subtasks: they stay an honest record.
+- A subtask can have its own **target date** (`migrations/0005_subtask_dates.sql`). It shows as a chip coloured like task dates: red when overdue, amber when due within a week. In a PATCH, `target_date: null` (or `''`) clears the date; a missing key leaves it alone.
+- **Board cards list their subtasks** (up to six, then "+N more") and can be ticked there. `GET /api/tasks` returns each task with its `subtasks` attached, using two queries in total rather than one per task (`attachSubtasks`).
 
 | Route | Purpose |
 | --- | --- |
 | `GET/POST /api/tasks` | List (with `subtask_total`, `subtask_done`), create |
 | `GET/PATCH/DELETE /api/tasks/:id` | Detail is `{ task, updates, subtasks }` |
 | `POST /api/tasks/:id/updates`, `DELETE …/updates/:uid` | Notes, optionally with a status change |
-| `POST /api/tasks/:id/subtasks` | Add a subtask (`{ title }`) |
-| `PATCH/DELETE /api/tasks/:id/subtasks/:sid` | `{ title?, done? }`. `done` must be a real boolean |
+| `POST /api/tasks/:id/subtasks` | Add a subtask (`{ title, target_date? }`) |
+| `PATCH/DELETE /api/tasks/:id/subtasks/:sid` | `{ title?, done?, target_date? }`. `done` must be a real boolean |
 
 ### Endpoints
 

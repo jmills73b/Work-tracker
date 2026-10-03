@@ -9,11 +9,24 @@ const TASK_COLUMNS = `
      ORDER BY u.created_at DESC, u.rowid DESC LIMIT 1) AS last_note,
   (SELECT MAX(u.created_at) FROM task_updates u WHERE u.task_id = t.id AND u.kind = 'note') AS last_note_at`;
 
+const SUBTASK_COLUMNS = 'id, task_id, title, done, position, target_date, completed_at';
+
+// Every task with its subtasks attached, from two queries rather than one per task.
 export async function listTasks(env, userId) {
-  const { results } = await env.DB.prepare(
-    `SELECT ${TASK_COLUMNS} FROM tasks t WHERE t.user_id = ? ORDER BY t.created_at DESC`,
-  ).bind(userId).all();
-  return results;
+  const [tasks, subtasks] = await Promise.all([
+    env.DB.prepare(`SELECT ${TASK_COLUMNS} FROM tasks t WHERE t.user_id = ? ORDER BY t.created_at DESC`).bind(userId).all(),
+    env.DB.prepare(`SELECT ${SUBTASK_COLUMNS} FROM subtasks WHERE user_id = ? ORDER BY task_id, position, created_at`).bind(userId).all(),
+  ]);
+  return attachSubtasks(tasks.results, subtasks.results);
+}
+
+export function attachSubtasks(tasks, subtasks) {
+  const byTask = new Map();
+  for (const { task_id: taskId, ...st } of subtasks) {
+    if (!byTask.has(taskId)) byTask.set(taskId, []);
+    byTask.get(taskId).push(st);
+  }
+  return tasks.map((t) => ({ ...t, subtasks: byTask.get(t.id) ?? [] }));
 }
 
 export function getTask(env, userId, id) {
@@ -29,11 +42,12 @@ export async function taskDetail(env, userId, id) {
        WHERE task_id = ? AND user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 500`,
     ).bind(id, userId).all(),
     env.DB.prepare(
-      `SELECT id, title, done, position, completed_at FROM subtasks
+      `SELECT ${SUBTASK_COLUMNS} FROM subtasks
        WHERE task_id = ? AND user_id = ? ORDER BY position, created_at`,
     ).bind(id, userId).all(),
   ]);
-  return { task, updates: updates.results, subtasks: subtasks.results };
+  const list = subtasks.results.map(({ task_id: _taskId, ...st }) => st);
+  return { task: { ...task, subtasks: list }, updates: updates.results, subtasks: list };
 }
 
 export function insertUpdate(env, { userId, taskId, kind, note, status = null, at }) {
@@ -53,7 +67,7 @@ export async function createTask(env, userId, t, at) {
     ).bind(id, userId, t.title, t.description, t.status, t.priority, t.target_date,
       t.category, at, at, t.status === 'done' ? at : null),
     insertUpdate(env, { userId, taskId: id, kind: 'change', note: 'Task created', at }),
-    ...(t.subtasks || []).map((title, position) => insertSubtask(env, { userId, taskId: id, title, position, at })),
+    ...(t.subtasks || []).map((st, position) => insertSubtask(env, { userId, taskId: id, ...st, position, at })),
   ]);
   return id;
 }
@@ -94,11 +108,11 @@ export async function deleteNote(env, userId, taskId, updateId) {
 // ---------- Subtasks ----------
 
 // position is passed explicitly when creating a task's first batch; otherwise it goes last.
-export function insertSubtask(env, { userId, taskId, title, position = null, at }) {
+export function insertSubtask(env, { userId, taskId, title, target_date: targetDate = null, position = null, at }) {
   return env.DB.prepare(
-    `INSERT INTO subtasks (id, task_id, user_id, title, done, position, created_at)
-     VALUES (?, ?, ?, ?, 0, COALESCE(?, (SELECT COALESCE(MAX(position) + 1, 0) FROM subtasks WHERE task_id = ?)), ?)`,
-  ).bind(crypto.randomUUID(), taskId, userId, title, position, taskId, at);
+    `INSERT INTO subtasks (id, task_id, user_id, title, done, position, target_date, created_at)
+     VALUES (?, ?, ?, ?, 0, COALESCE(?, (SELECT COALESCE(MAX(position) + 1, 0) FROM subtasks WHERE task_id = ?)), ?, ?)`,
+  ).bind(crypto.randomUUID(), taskId, userId, title, position, taskId, targetDate, at);
 }
 
 export function getSubtask(env, userId, taskId, subtaskId) {
@@ -106,10 +120,13 @@ export function getSubtask(env, userId, taskId, subtaskId) {
     .bind(subtaskId, taskId, userId).first();
 }
 
-export function updateSubtask(env, userId, taskId, subtaskId, { title, done }, at) {
+export function updateSubtask(env, userId, taskId, subtaskId, fields, at) {
+  const { title, done } = fields;
   const sets = [];
   const params = [];
   if (title !== undefined) { sets.push('title = ?'); params.push(title); }
+  // `in`, not `!== undefined`: a null target_date is a request to clear it.
+  if ('target_date' in fields) { sets.push('target_date = ?'); params.push(fields.target_date); }
   if (done !== undefined) {
     sets.push('done = ?', 'completed_at = ?');
     params.push(done ? 1 : 0, done ? at : null);

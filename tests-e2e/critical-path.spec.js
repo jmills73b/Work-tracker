@@ -24,6 +24,11 @@ test('a task with subtasks can be created, updated, completed and is still there
   await expect(page.locator('#timeline')).toContainText('Completed: Outline');
   await expect(page.locator('#timeline')).toContainText('Status: To do → In progress');
 
+  // A subtask can carry its own date; the chip shows it in words.
+  const draftRow = page.locator('.subtask', { has: page.locator('input[value="Draft sections"]') });
+  await draftRow.locator('input[type=date]').fill('2030-01-15');
+  await expect(draftRow.locator('.date-chip')).toContainText('Jan 15');
+
   await page.locator('#update-note').fill('Draft sections agreed with the team');
   await page.locator('#post-update').click();
   await expect(page.locator('.tl-note')).toContainText('Draft sections agreed with the team');
@@ -33,6 +38,15 @@ test('a task with subtasks can be created, updated, completed and is still there
   await expect(row).toContainText('Draft sections agreed with the team');
   await expect(row.locator('.subtask-chip')).toHaveText('1/2');
   await expect(row.locator('.pill')).toHaveText('In progress');
+
+  // The board shows each card's subtasks, and they can be ticked there without opening the task.
+  await page.getByRole('button', { name: 'Board' }).click();
+  const card = page.locator('.card', { hasText: 'Write the quarterly report' });
+  await expect(card.locator('.card-subtask')).toHaveText([/Outline/, /Draft sections.*Jan 15/]);
+  await card.locator('.card-subtask', { hasText: 'Draft sections' }).locator('.check').click();
+  await expect(card.locator('.subtask-chip')).toHaveText('2/2');
+  await expect(page.locator('#drawer')).toBeHidden();
+  await page.getByRole('button', { name: 'List' }).click();
 
   await row.locator('.check').click();
   await page.locator('[data-status=done]').click();
@@ -58,5 +72,5 @@ test('a task with subtasks can be created, updated, completed and is still there
   const done = page.locator('.row', { hasText: 'Write the quarterly report' });
   await expect(done.locator('.pill')).toHaveText('Done');
   // Subtasks are their own record: finishing the task doesn't tick them.
-  await expect(done.locator('.subtask-chip')).toHaveText('1/2');
+  await expect(done.locator('.subtask-chip')).toHaveText('2/2');
 });

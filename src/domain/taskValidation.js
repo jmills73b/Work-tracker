@@ -64,13 +64,14 @@ export function validateTask(input, { partial = false } = {}) {
     if (!Array.isArray(input.subtasks) || input.subtasks.length > MAX_SUBTASKS) {
       return { error: `Subtasks must be a list of at most ${MAX_SUBTASKS}` };
     }
-    const titles = [];
-    for (const t of input.subtasks) {
-      const r = subtaskTitle(t);
+    const subtasks = [];
+    for (const item of input.subtasks) {
+      // A bare string is a title; an object can also carry a target date.
+      const r = validateSubtaskCreate(typeof item === 'string' ? { title: item } : item);
       if (r.error) return r;
-      titles.push(r.value);
+      subtasks.push(r.value);
     }
-    out.subtasks = titles;
+    out.subtasks = subtasks;
   }
 
   return { value: out };
@@ -82,13 +83,24 @@ function subtaskTitle(value) {
   return text(value ?? '', 'Subtask', 200, { required: true });
 }
 
+// null or '' means "no date"; anything else must be a real calendar date.
+function optionalDate(v) {
+  if (v === null || v === '') return { value: null };
+  if (typeof v === 'string' && validDate(v)) return { value: v };
+  return { error: 'Target date must be YYYY-MM-DD' };
+}
+
 export function validateSubtaskCreate(input) {
   if (!isObject(input)) return { error: 'Invalid request body' };
   const r = subtaskTitle(input.title);
-  return r.error ? r : { value: { title: r.value } };
+  if (r.error) return r;
+  const d = optionalDate(input.target_date ?? null);
+  if (d.error) return d;
+  return { value: { title: r.value, target_date: d.value } };
 }
 
-// PATCH body: { title?, done? }. done must be a real boolean, not 0/1 or "true".
+// PATCH body: { title?, done?, target_date? }. done must be a real boolean, not 0/1 or
+// "true". A target_date of null clears the date; leaving the key out leaves it alone.
 export function validateSubtaskPatch(input) {
   if (!isObject(input)) return { error: 'Invalid request body' };
   const out = {};
@@ -100,6 +112,11 @@ export function validateSubtaskPatch(input) {
   if ('done' in input) {
     if (typeof input.done !== 'boolean') return { error: 'done must be true or false' };
     out.done = input.done;
+  }
+  if ('target_date' in input) {
+    const d = optionalDate(input.target_date);
+    if (d.error) return d;
+    out.target_date = d.value;
   }
   if (!Object.keys(out).length) return { error: 'Nothing to change' };
   return { value: out };
