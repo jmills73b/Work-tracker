@@ -43,6 +43,7 @@
     subtasks: [], // the open task's subtasks, or drafts while creating a new task
     templates: [],
     dirty: false,
+    assistant: false, // the server has the assistant's API key
   };
 
   const form = $('#task-form');
@@ -843,6 +844,72 @@
     el.style.height = `${el.scrollHeight + 2}px`;
   }
 
+  /* ---------- Task assistant ---------- */
+
+  // run numbers each request, so a late reply to an earlier one is ignored.
+  const assist = { run: 0, suggestion: null };
+
+  async function askAssistant() {
+    const original = { title: field('title').value.trim(), description: field('description').value.trim() };
+    if (!original.title) {
+      toast('Write a title first, then ask for suggestions', 'error');
+      field('title').focus();
+      return;
+    }
+    const dialog = $('#assist-dialog');
+    if (!dialog.open) dialog.showModal();
+    const run = ++assist.run;
+    assist.suggestion = null;
+    showAssist({ busy: true });
+    $('#assist-btn').classList.add('is-busy');
+    try {
+      const suggestion = await api('/assist', { method: 'POST', body: original });
+      if (run !== assist.run) return;
+      assist.suggestion = { ...suggestion, original };
+      showAssist({ suggestion: assist.suggestion });
+    } catch (err) {
+      if (run !== assist.run || err.silent) return;
+      showAssist({ error: err.message });
+    } finally {
+      if (run === assist.run) $('#assist-btn').classList.remove('is-busy');
+    }
+  }
+
+  function showAssist({ busy = false, suggestion = null, error = '' }) {
+    const changed = Boolean(suggestion && (suggestion.changed.title || suggestion.changed.description));
+    const status = $('#assist-status');
+    status.classList.toggle('is-busy', busy);
+    status.textContent = busy ? 'Reading your task…'
+      : error || (suggestion && !changed ? 'This task already reads clearly. Nothing to change.' : '');
+    $('#assist-result').hidden = !changed;
+    if (changed) {
+      // Only the fields with a suggestion; an unchanged one would just be noise.
+      $('#assist-title-field').hidden = !suggestion.changed.title;
+      $('#assist-title-old').textContent = suggestion.original.title;
+      $('#assist-title-new').textContent = suggestion.title;
+      $('#assist-desc-field').hidden = !suggestion.changed.description;
+      $('#assist-desc-old').textContent = suggestion.original.description;
+      $('#assist-desc-new').textContent = suggestion.description;
+      $('#assist-why').textContent = suggestion.reason;
+    }
+    $('#assist-replace').hidden = !changed;
+    $('#assist-keep').textContent = changed ? 'Keep original' : 'Close';
+    $('#assist-retry').hidden = busy;
+  }
+
+  // Puts the suggestion in the form; nothing is saved until Save, as with typing.
+  function applySuggestion() {
+    const s = assist.suggestion;
+    if (!s) return;
+    if (s.changed.title) field('title').value = s.title;
+    if (s.changed.description) field('description').value = s.description;
+    autoGrow(field('title'));
+    autoGrow(field('description'));
+    setDirty(true);
+    $('#assist-dialog').close();
+    toast(state.current ? 'Wording replaced. Save changes to keep it.' : 'Wording replaced');
+  }
+
   /* ---------- Quick add parser ---------- */
   // One line in, task fields out: "Board deck fri !high #Leadership". Recognised words are
   // taken out of the title; the preview shows what was understood before anything is saved.
@@ -1334,6 +1401,16 @@
     $('#scrim').addEventListener('click', () => closeDrawer());
     $('#delete-btn').addEventListener('click', deleteTask);
     $('#post-update').addEventListener('click', postUpdate);
+    $('#assist-btn').addEventListener('click', askAssistant);
+    $('#assist-retry').addEventListener('click', askAssistant);
+    $('#assist-replace').addEventListener('click', applySuggestion);
+    $('#assist-keep').addEventListener('click', () => $('#assist-dialog').close());
+    // However it closes (Keep, Escape, Replace), a reply still on its way is dropped.
+    $('#assist-dialog').addEventListener('close', () => {
+      assist.run += 1;
+      assist.suggestion = null;
+      $('#assist-btn').classList.remove('is-busy');
+    });
     form.addEventListener('submit', saveTask);
     form.addEventListener('input', (e) => {
       if (e.target === field('title') && /[\r\n]/.test(e.target.value)) e.target.value = e.target.value.replace(/[\r\n]+/g, ' ');
@@ -1379,7 +1456,8 @@
     });
 
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && state.drawerOpen) {
+      // A dialog over the drawer (the assistant) closes itself on Escape; the drawer stays.
+      if (e.key === 'Escape' && state.drawerOpen && !document.querySelector('dialog[open]')) {
         e.preventDefault();
         closeDrawer();
         return;
@@ -1405,6 +1483,8 @@
     $('#user-button').title = `Signed in as ${user.email}`;
     $('#invite-btn').hidden = !user.is_admin;
     $('#teams-btn').hidden = !user.is_admin;
+    state.assistant = Boolean(user.assistant);
+    $('#assist-btn').hidden = !state.assistant;
   }
 
   async function loadApp() {

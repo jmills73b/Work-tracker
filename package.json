@@ -17,5 +17,8 @@
     "vitest": "^3.2.7",
     "web-push": "^3.6.7",
     "wrangler": "^4.0.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0"
   }
 }

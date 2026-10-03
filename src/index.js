@@ -1,4 +1,5 @@
 import * as admin from './http/admin.js';
+import * as assist from './http/assist.js';
 import * as auth from './http/auth.js';
 import { json, redirect, text, withSecurityHeaders } from './http/respond.js';
 import * as push from './http/push.js';
@@ -60,7 +61,7 @@ export async function route(request, env) {
 
   // 3. Session-optional routes.
   if (method === 'POST' && path === '/api/auth/logout') return auth.logout(request, env);
-  if (method === 'GET' && path === '/api/auth/me') return user ? auth.me(user) : text('Unauthorized', 401);
+  if (method === 'GET' && path === '/api/auth/me') return user ? auth.me(user, env) : text('Unauthorized', 401);
 
   // 4. Everything else under /api/ needs a session; /api/admin/ also needs is_admin.
   if (path.startsWith('/api/')) {
@@ -77,6 +78,8 @@ export async function route(request, env) {
 
 async function api(request, env, user, method, path) {
   if (path === '/api/auth/password' && method === 'POST') return auth.changePassword(request, env, user);
+
+  if (path === '/api/assist' && method === 'POST') return assist.suggest(request, env, user);
 
   if (path === '/api/teams' && method === 'GET') return teams.get(env);
   if (path === '/api/admin/teams' && method === 'POST') return teams.create(request, env);

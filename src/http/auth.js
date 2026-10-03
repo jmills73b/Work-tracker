@@ -5,6 +5,7 @@ import { hashPassword, randomHex, timingSafeEqual } from '../infra/crypto.js';
 import { clearFailures, EMAIL_MAX_FAILURES, IP_MAX_FAILURES, lockedUntil, recordFailure } from '../infra/loginAttempts.js';
 import * as usersRepo from '../infra/usersRepo.js';
 import { json, noContent, text } from './respond.js';
+import { isEnabled } from './assist.js';
 
 // Hashed against when the email is unknown, so that path costs the same as a wrong password.
 const DUMMY_SALT = '00000000000000000000000000000000';
@@ -77,8 +78,9 @@ export async function logout(request, env) {
   return noContent({ 'Set-Cookie': clearedCookie() });
 }
 
-export function me(user) {
-  return json(publicUser(user));
+// `assistant`: whether the page should offer the task assistant (its API key is set).
+export function me(user, env = {}) {
+  return json({ ...publicUser(user), assistant: isEnabled(env) });
 }
 
 export async function changePassword(request, env, user) {

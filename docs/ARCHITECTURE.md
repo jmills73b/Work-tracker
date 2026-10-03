@@ -6,9 +6,9 @@
 
 ```
 src/index.js          fetch() wrapper + route(): the request gate, in order
-src/http/             handlers: auth.js, tasks.js, admin.js, respond.js
-src/infra/            crypto.js, auth.js (sessions), usersRepo.js, tasksRepo.js, loginAttempts.js
-src/domain/           pure rules: passwordPolicy, registration, taskValidation, taskChanges
+src/http/             handlers: auth.js, tasks.js, admin.js, assist.js, push.js, teams.js, templates.js, respond.js
+src/infra/            crypto.js, auth.js (sessions), usersRepo.js, tasksRepo.js, loginAttempts.js, assistClient.js, assistUsageRepo.js, …
+src/domain/           pure rules: passwordPolicy, registration, taskValidation, taskChanges, assist (prompt + checks), …
 public/               index.html + app.js (the app), login.html + login.js, app.css, icons
 migrations/           D1 schema
 tests/                Vitest unit tests (pure; fake DB; no network; no clock)
@@ -35,11 +35,13 @@ tests-e2e/            Playwright specs against a local Worker and a fresh local 
 - **Quick add** (the + button and the `N` key) turns one line into a task with `parseQuickAdd` in `app.js`, a pure function that takes "today" as an argument. It picks out the first date (today, tomorrow, weekdays, next <weekday> = the one in next Monday-start week, next week, in N days/weeks/months, eow, eom, 12 Oct, Oct 12, 12/10 read as day/month), the first `!priority` (`!!!`/`!urgent`, `!!`/`!high`, `!med`, `!low`) and the first `#Team` (matched to a team's name ignoring case, spaces, `_` and `-`, so `#devops` finds Dev Ops; a `#word` naming no team stays in the title). Recognised words leave the title; anything it can't read stays in it. A live preview shows the reading before saving, and "Add details…" carries it into the full form.
 - **Templates** (`migrations/0006_templates.sql`) copy a task's title, description, priority, category and subtasks. Each subtask's date is kept as `offset_days` from the task's target date (`dayOffset`; null when either date is missing, 0 when the same day). Starting a new task from a template creates draft subtasks that follow the target date as it is set (`shiftDate` / `placeDrafts` in `app.js`). A date picked by hand stops following.
 - A subtask can have its own **target date** (`migrations/0005_subtask_dates.sql`). It shows as a chip coloured like task dates: red when overdue, amber when due within a week. In a PATCH, `target_date: null` (or `''`) clears the date; a missing key leaves it alone.
+- **Task assistant** (the ✨ button beside a task's title) suggests a clearer, more concise title and description. The page shows yours and the suggestion side by side, with a one-line reason; **Replace** puts the suggestion in the form (nothing is saved until Save) and **Keep original** changes nothing. Only changed fields are shown; a task that already reads clearly says so. `POST /api/assist` (`src/http/assist.js`) makes one call to Claude Haiku 4.5 (`claude-haiku-4-5`, the fast, cheap model; no extended thinking) through the official `@anthropic-ai/sdk`, with a structured-output JSON schema. The prompt is `SYSTEM_PROMPT` in `src/domain/assist.js`: lead with a verb, about 60 characters, keep acronyms and names exactly, drop filler and urgency words (priority holds urgency), keep every fact, keep uncertainty as uncertainty, never write a description that wasn't there, leave clear text alone, British English. The task text is escaped inside `<task>` tags and treated as data. `shapeSuggestion` falls back to the original for any empty, oversized or unreadable field, so a bad reply can only mean "no change". Each user gets 30 calls an hour (`assist_usage`, `migrations/0009_assist.sql`), counted before the call. The API key is the Worker secret `ANTHROPIC_API_KEY`, copied from the GitHub secret of the same name on every deploy; it never reaches the browser, and `GET /api/auth/me` only reports `assistant: true/false` so the page knows whether to show the button. Each suggestion costs roughly £0.001–0.002. Task text is sent to Anthropic only when ✨ is tapped.
 - **Board cards list their subtasks** (up to six, then "+N more") and can be ticked there. `GET /api/tasks` returns each task with its `subtasks` attached, using two queries in total rather than one per task (`attachSubtasks`).
 
 | Route | Purpose |
 | --- | --- |
 | `GET /api/push/config`, `PUT /api/push/settings`, `POST/DELETE /api/push/subscriptions`, `POST /api/push/test` | Reminders: public key, settings and device count; settings; add/remove this device; send a test |
+| `POST /api/assist` | `{ title, description }` → `{ title, description, reason, changed: { title, description } }`; 429 over 30 an hour, 503 when not set up or Claude is busy, 502 for an unusable reply |
 | `GET /api/teams`; admin: `POST /api/admin/teams`, `PATCH/DELETE /api/admin/teams/:id` | Team list for everyone; add, rename, remove (admins only) |
 | `GET/POST /api/templates`, `DELETE /api/templates/:id` | List; save a task as a template (`{ task_id, name }`); delete |
 | `GET/POST /api/tasks` | List (with `subtask_total`, `subtask_done`), create |
@@ -139,6 +141,7 @@ Runs against `wrangler dev --local` and a freshly wiped local D1. It never uses 
 
 Specs, kept few:
 - `critical-path.spec.js`: sign in, create a task with draft subtasks, tick one, post an update, complete, sign out, gate, wrong password, sign back in.
+- `assistant.spec.js`: no button without a key; at iPhone 12 mini size, yours and the suggestion side by side, Escape closes only the sheet, Keep changes nothing, Replace fills the form and saves; the "already clear" answer. The two calls that need a key are stubbed in the browser; the Worker-side call is unit-tested with the real SDK against a fake API.
 - `missing-data.spec.js`: the empty-account state, and a failed save showing its message (the bug class where `notify()` called itself and froze the page).
 
 ### Verification outside the suite

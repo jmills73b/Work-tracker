@@ -120,7 +120,12 @@
             <option value="">Choose…</option>
           </select>
         </label>
-        <textarea name="title" class="title-input" placeholder="What needs doing?" maxlength="200" rows="1" aria-label="Task title" required enterkeyhint="done"></textarea>
+        <div class="title-row">
+          <textarea name="title" class="title-input" placeholder="What needs doing?" maxlength="200" rows="1" aria-label="Task title" required enterkeyhint="done"></textarea>
+          <button type="button" class="assist-btn" id="assist-btn" aria-label="Suggest clearer wording" title="Suggest clearer wording" hidden>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M10 2.5l1.7 4.8a3 3 0 0 0 1.8 1.8L18.3 11l-4.8 1.7a3 3 0 0 0-1.8 1.8L10 19.3l-1.7-4.8a3 3 0 0 0-1.8-1.8L1.7 11l4.8-1.7a3 3 0 0 0 1.8-1.8z"/><path d="M19 1.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/><path d="M19.5 15.5l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6z"/></svg>
+          </button>
+        </div>
         <textarea name="description" class="desc-input" placeholder="Add details, links, context…" rows="1" maxlength="5000" aria-label="Description"></textarea>
 
         <div class="field-grid">
@@ -262,6 +267,35 @@
       <div class="dialog-actions">
         <button type="button" class="btn" id="templates-close">Done</button>
       </div>
+    </div>
+  </dialog>
+
+  <dialog class="dialog assist-dialog" id="assist-dialog" aria-labelledby="assist-heading">
+    <div class="dialog-body">
+      <h2 id="assist-heading" class="assist-heading"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M10 2.5l1.7 4.8a3 3 0 0 0 1.8 1.8L18.3 11l-4.8 1.7a3 3 0 0 0-1.8 1.8L10 19.3l-1.7-4.8a3 3 0 0 0-1.8-1.8L1.7 11l4.8-1.7a3 3 0 0 0 1.8-1.8z"/><path d="M19 1.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/><path d="M19.5 15.5l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6z"/></svg>Suggested wording</h2>
+      <p class="assist-status" id="assist-status" role="status"></p>
+      <div id="assist-result" hidden>
+        <section class="assist-field" id="assist-title-field">
+          <h3>Title</h3>
+          <div class="assist-compare">
+            <div class="assist-card"><span class="assist-label">Yours</span><p id="assist-title-old"></p></div>
+            <div class="assist-card suggested"><span class="assist-label">Suggested</span><p id="assist-title-new"></p></div>
+          </div>
+        </section>
+        <section class="assist-field" id="assist-desc-field">
+          <h3>Description</h3>
+          <div class="assist-compare">
+            <div class="assist-card"><span class="assist-label">Yours</span><p id="assist-desc-old"></p></div>
+            <div class="assist-card suggested"><span class="assist-label">Suggested</span><p id="assist-desc-new"></p></div>
+          </div>
+        </section>
+        <p class="assist-why" id="assist-why"></p>
+      </div>
+      <div class="assist-actions">
+        <button type="button" class="btn" id="assist-keep">Keep original</button>
+        <button type="button" class="btn primary" id="assist-replace" hidden>Replace</button>
+      </div>
+      <button type="button" class="assist-retry" id="assist-retry" hidden>↻ Try again</button>
     </div>
   </dialog>
 

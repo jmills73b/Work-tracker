@@ -86,6 +86,19 @@ jobs:
         if: steps.token.outputs.ready == 'true'
         run: npx wrangler deploy
 
+      # Copied on every deploy, so changing the GitHub secret is enough to rotate the key.
+      # The key goes in on stdin, never on the command line or in the log.
+      - name: Give the Worker the task assistant's API key
+        if: steps.token.outputs.ready == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::notice::The task assistant is off: add the ANTHROPIC_API_KEY repository secret to turn it on."
+          else
+            printf '%s' "$ANTHROPIC_API_KEY" | npx wrangler secret put ANTHROPIC_API_KEY
+          fi
+
       - name: Make sure the reminders key pair exists
         if: steps.token.outputs.ready == 'true'
         run: node scripts/ensure-vapid.mjs

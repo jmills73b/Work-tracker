@@ -10,6 +10,7 @@ A clean, private tracker for your own tasks. Capture a task, set its priority an
 - **Quick add**: type `Board deck fri !high #RDH` and it becomes a High task due Friday for RDH, with a preview before saving
 - **Teams**: each task can belong to a team (Dev Ops, RDH, GDS, or none), with a team filter on the list and board; admins manage the team list
 - **Templates**: save any task as a template, then start new tasks from it with the subtask dates laid out again
+- **Task assistant**: tap ✨ beside a title for a clearer, more concise wording of the title and description, shown side by side with yours. Replace or keep the original. Uses Claude Haiku (about 0.15p a suggestion, capped at 30 an hour)
 - **Task drawer** for editing and posting updates. Status, priority, date and subtask changes are logged automatically
 - Search, filters, sorting, light/dark mode. Laid out for iPhone and iPad as well as desktop, and can be added to the Home Screen
 - Email and password sign-in. The first account is the admin and can invite others; everyone's tasks are private
@@ -24,6 +25,7 @@ It runs as one Cloudflare Worker with a D1 database, all on the free tier. See [
    - D1: Edit
    - Account Settings: Read
 2. **Add it to GitHub** as a repository secret named `CLOUDFLARE_API_TOKEN` (**Settings → Secrets and variables → Actions**).
+   - Optional, for the task assistant: add your Claude API key (console.anthropic.com → API keys) as a second secret named `ANTHROPIC_API_KEY`. Without it the ✨ button simply doesn't appear.
 3. **Push to `main`, or re-run the workflow.** It runs the unit and end-to-end tests, creates the database if needed, applies migrations and deploys. The live address is shown in the run summary, e.g. `https://work-tracker.<you>.workers.dev`.
 4. **Open the site and choose "Create an account" straight away.** The first account becomes the admin; nobody else can register without an invite code from you.
 
