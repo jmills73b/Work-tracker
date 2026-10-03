@@ -12,7 +12,7 @@ self.addEventListener('push', (event) => {
     data = { body: event.data ? event.data.text() : '' };
   }
   // iOS requires every push to show a notification, so always show one.
-  event.waitUntil(self.registration.showNotification(data.title || 'Work Tracker', {
+  event.waitUntil(self.registration.showNotification(data.title || 'mills. Tasks', {
     body: data.body || '',
     tag: data.tag || undefined,
     icon: '/icon-180.png',

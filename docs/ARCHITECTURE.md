@@ -1,6 +1,6 @@
 # Architecture
 
-A Cloudflare Worker (`src/index.js`) serves both the API and the static pages in `public/`, backed by one D1 database. No framework, no build step. Authentication follows the login spec used in the mills. investments app; where this app departs from it, the difference is listed under [Departures from the spec](#departures-from-the-spec).
+**mills. Tasks** is a Cloudflare Worker (`src/index.js`) that serves both the API and the static pages in `public/`, backed by one D1 database. No framework, no build step. Authentication follows the login spec used in the mills. investments app; where this app departs from it, the difference is listed under [Departures from the spec](#departures-from-the-spec).
 
 ## Layout
 

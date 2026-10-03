@@ -1,4 +1,4 @@
-# Work Tracker
+# mills. Tasks
 
 A clean, private tracker for your own tasks. Capture a task, set its priority and target date, break it into subtasks, and keep a running log of updates.
 
