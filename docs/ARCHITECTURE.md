@@ -17,7 +17,7 @@ tests-e2e/            Playwright specs against a local Worker and a fresh local 
 
 ## Login
 
-- **Schema** (`migrations/0001_init.sql`): `users`, `sessions`, `invite_codes` exactly as in the spec, plus `login_attempts` for lockout.
+- **Schema** (`migrations/0003_worker_auth.sql`): `users`, `sessions`, `invite_codes` exactly as in the spec, plus `login_attempts` for lockout. `0001` and `0002` are the earlier Pages-era schema. They were applied to production, so they stay exactly as they were, and `0003` replaces their (empty) tables. **Applied migrations are never edited**; changes go in a new numbered file.
 - **Passwords:** PBKDF2-SHA256, 100,000 iterations, 256-bit output stored as hex, with a per-user 16-byte salt from `randomHex(16)`. Comparison is `timingSafeEqual`.
 - **Sessions:** a `randomHex(32)` token lives only in the cookie. The table stores `SHA-256(token)`. `SESSION_DAYS = 30`, and expiry is checked in JavaScript after the row is fetched. Cookie: `session=<token>; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000`.
 - **Registration:** the first user (empty `users` table) becomes admin with no code. Everyone after needs an unused invite code, which admins create from the user menu ("Invite someone").
@@ -119,5 +119,5 @@ Specs, kept few:
 ### Verification outside the suite
 
 - Render pages in headless Chromium at 390px before shipping. This caught the login page's stuck-together buttons and a three-line phone header.
-- Run new SQL against a real local D1 (`wrangler d1 execute --local`).
+- Run new SQL against a real local D1 (`wrangler d1 execute --local`). For `0003`, the production path was replayed: `0001`+`0002` with rows in the old tables, then `0003`, then a duplicate-email insert to prove the `UNIQUE` constraint refuses it.
 - Grep that documentation landed before committing.

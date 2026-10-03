@@ -44,6 +44,17 @@ if (!account) {
 }
 const A = `/accounts/${account}`;
 
+// The token needs Workers permission as well as D1. Say so plainly rather than letting
+// `wrangler deploy` fail later with a bare authentication error.
+try {
+  await api('GET', `${A}/workers/scripts`);
+} catch (e) {
+  if (e.status === 401 || e.status === 403) {
+    fail('The Cloudflare API token cannot manage Workers. Edit the token (My Profile → API Tokens) and add Account → Workers Scripts → Edit.');
+  }
+  throw e;
+}
+
 // D1
 let db = (await api('GET', `${A}/d1/database?name=${DB_NAME}`)).find((d) => d.name === DB_NAME);
 if (!db) {
