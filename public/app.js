@@ -35,7 +35,6 @@
     q: '',
     current: null, // task open in the drawer (null = creating a new one)
     drawerOpen: false,
-    signedIn: false,
     dirty: false,
   };
 
@@ -99,48 +98,51 @@
     } catch {
       throw new Error('Connection problem. Check your internet and try again.');
     }
-    const type = res.headers.get('Content-Type') || '';
-    if (!type.includes('application/json')) throw new Error(`Unexpected response (${res.status}). Try reloading the page.`);
-    const data = await res.json();
+    if (res.status === 401) {
+      // Session gone or expired: the page gate on /login takes it from here.
+      state.dirty = false;
+      location.href = '/login';
+      const err = new Error('Signed out');
+      err.silent = true;
+      throw err;
+    }
+    if (res.status === 204) return null;
+    const isJson = (res.headers.get('Content-Type') || '').includes('application/json');
+    const data = isJson ? await res.json() : await res.text();
     if (!res.ok) {
-      const err = new Error(data.error || `Request failed (${res.status})`);
+      // Auth endpoints answer in plain text, the task API in { error }; show either verbatim.
+      const err = new Error((isJson ? data?.error : data) || `Request failed (${res.status})`);
       err.status = res.status;
-      if (res.status === 401 && path !== '/auth/login') {
-        err.silent = true;
-        showLogin();
-      }
       throw err;
     }
     return data;
   }
 
   function notify(err) {
-    if (!err.silent) notify(err);
+    if (!err.silent) toast(err.message, 'error');
   }
 
   /* ---------- Dates ---------- */
 
-  function todayParts() {
-    const d = new Date();
-    return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
-  }
+  const dayNumber = (date) => Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000;
 
-  function daysUntil(iso) {
+  // Whole days from `today` to an ISO date (YYYY-MM-DD); negative once it has passed.
+  function daysUntil(iso, today = new Date()) {
     const [y, m, d] = iso.split('-').map(Number);
-    return Math.round((Date.UTC(y, m - 1, d) - todayParts()) / 86400000);
+    return Math.round(Date.UTC(y, m - 1, d) / 86400000 - dayNumber(today));
   }
 
-  function shortDate(iso, withYear = false) {
+  function shortDate(iso, today = new Date()) {
     const d = new Date(`${iso.slice(0, 10)}T00:00:00`);
     const opts = { month: 'short', day: 'numeric' };
-    if (withYear || d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+    if (d.getFullYear() !== today.getFullYear()) opts.year = 'numeric';
     return d.toLocaleDateString(undefined, opts);
   }
 
-  function dueInfo(t) {
+  function dueInfo(t, today = new Date()) {
     if (!t.target_date) return { label: 'No date', cls: 'muted' };
-    const n = daysUntil(t.target_date);
-    const date = shortDate(t.target_date);
+    const n = daysUntil(t.target_date, today);
+    const date = shortDate(t.target_date, today);
     if (t.status === 'done') return { label: date, cls: 'muted' };
     if (n < 0) return { label: `${-n}d overdue`, cls: 'overdue', title: `Target was ${date}` };
     if (n === 0) return { label: 'Today', cls: 'soon', title: date };
@@ -150,8 +152,12 @@
   }
 
   const isActive = (t) => t.status !== 'done';
-  const isOverdue = (t) => isActive(t) && t.target_date && daysUntil(t.target_date) < 0;
-  const isDueThisWeek = (t) => isActive(t) && t.target_date && daysUntil(t.target_date) >= 0 && daysUntil(t.target_date) <= 7;
+  const isOverdue = (t, today = new Date()) => isActive(t) && Boolean(t.target_date) && daysUntil(t.target_date, today) < 0;
+  const isDueThisWeek = (t, today = new Date()) => {
+    if (!isActive(t) || !t.target_date) return false;
+    const n = daysUntil(t.target_date, today);
+    return n >= 0 && n <= 7;
+  };
 
   const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
   function relTime(iso) {
@@ -182,8 +188,8 @@
   const STATUS_FILTERS = {
     active: isActive,
     all: () => true,
-    overdue: isOverdue,
-    week: isDueThisWeek,
+    overdue: (t) => isOverdue(t),
+    week: (t) => isDueThisWeek(t),
     done30: (t) => t.status === 'done' && t.completed_at && Date.now() - new Date(t.completed_at) < 30 * 86400000,
   };
 
@@ -222,8 +228,8 @@
     const stats = [
       { key: 'active', label: 'Active', value: t.filter(isActive).length, s: 'todo' },
       { key: 'in_progress', label: 'In progress', value: t.filter((x) => x.status === 'in_progress').length, s: 'in_progress' },
-      { key: 'week', label: 'Due this week', value: t.filter(isDueThisWeek).length, s: 'blocked' },
-      { key: 'overdue', label: 'Overdue', value: t.filter(isOverdue).length, alert: true },
+      { key: 'week', label: 'Due this week', value: t.filter((x) => isDueThisWeek(x)).length, s: 'blocked' },
+      { key: 'overdue', label: 'Overdue', value: t.filter((x) => isOverdue(x)).length, alert: true },
       { key: 'done30', label: 'Done (30 days)', value: t.filter(STATUS_FILTERS.done30).length, s: 'done' },
     ];
     $('#stats').replaceChildren(
@@ -692,7 +698,7 @@
         return;
       }
       const t = e.target;
-      if (e.ctrlKey || e.metaKey || e.altKey || state.drawerOpen || !state.signedIn || $('#password-dialog').open) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || state.drawerOpen || document.querySelector('dialog[open]')) return;
       if (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName)) return;
       if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openNew(); }
       if (e.key === '/') { e.preventDefault(); $('#search').focus(); }
@@ -708,70 +714,20 @@
 
   /* ---------- Account ---------- */
 
-  function setUser(username) {
-    state.signedIn = true;
-    document.body.classList.remove('logged-out');
-    $('#login').hidden = true;
+  function setUser(user) {
     $('#user-menu').hidden = false;
-    $('#user-name').textContent = username;
-    $('#user-avatar').textContent = username.slice(0, 1);
-    $('#user-button').title = `Signed in as ${username}`;
-  }
-
-  function showLogin() {
-    if (!state.signedIn && !$('#login').hidden) return;
-    state.signedIn = false;
-    state.tasks = [];
-    state.loaded = false;
-    setDirty(false);
-    closeDrawer(true);
-    closeMenu();
-    if ($('#password-dialog').open) $('#password-dialog').close();
-    document.body.classList.add('logged-out');
-    $('#user-menu').hidden = true;
-    $('#login').hidden = false;
-    $('#login-error').hidden = true;
-    const form = $('#login-form');
-    form.elements.namedItem('password').value = '';
-    (form.elements.namedItem('username').value ? form.elements.namedItem('password') : form.elements.namedItem('username')).focus();
+    $('#user-name').textContent = user.name;
+    $('#user-avatar').textContent = user.name.slice(0, 1);
+    $('#user-button').title = `Signed in as ${user.email}`;
+    $('#invite-btn').hidden = !user.is_admin;
   }
 
   async function loadApp() {
-    const [me, list] = await Promise.all([api('/me'), api('/tasks')]);
-    setUser(me.username);
+    const [me, list] = await Promise.all([api('/auth/me'), api('/tasks')]);
+    setUser(me);
     state.tasks = list.tasks;
     state.loaded = true;
     render();
-  }
-
-  async function signIn(e) {
-    e.preventDefault();
-    const form = e.currentTarget;
-    const username = form.elements.namedItem('username').value.trim();
-    const password = form.elements.namedItem('password').value;
-    const errorEl = $('#login-error');
-    if (!username || !password) {
-      errorEl.textContent = 'Enter your username and password.';
-      errorEl.hidden = false;
-      return;
-    }
-    const btn = $('#login-submit');
-    btn.disabled = true;
-    btn.textContent = 'Signing in…';
-    try {
-      await api('/auth/login', { method: 'POST', body: { username, password } });
-      form.elements.namedItem('password').value = '';
-      errorEl.hidden = true;
-      render();
-      await loadApp();
-    } catch (err) {
-      errorEl.textContent = err.message;
-      errorEl.hidden = false;
-      form.elements.namedItem('password').select();
-    } finally {
-      btn.disabled = false;
-      btn.textContent = 'Sign in';
-    }
   }
 
   async function signOut() {
@@ -782,7 +738,8 @@
     } catch (err) {
       if (!err.silent) return notify(err);
     }
-    showLogin();
+    state.dirty = false;
+    location.href = '/login';
   }
 
   function toggleMenu(open) {
@@ -790,9 +747,14 @@
     const show = open ?? menu.hidden;
     menu.hidden = !show;
     $('#user-button').setAttribute('aria-expanded', String(show));
-    if (show) menu.querySelector('button').focus();
+    if (show) menu.querySelector('button:not([hidden])').focus();
   }
   const closeMenu = () => toggleMenu(false);
+
+  function showFormError(el, message) {
+    el.textContent = message;
+    el.hidden = false;
+  }
 
   function openPasswordDialog() {
     closeMenu();
@@ -800,36 +762,65 @@
     form.reset();
     $('#password-error').hidden = true;
     $('#password-dialog').showModal();
-    form.elements.namedItem('current').focus();
+    form.elements.namedItem('current_password').focus();
   }
 
+  // Validation beyond required/minlength is the server's; its message is shown verbatim.
   async function changePassword(e) {
     e.preventDefault();
     const form = e.currentTarget;
-    const current = form.elements.namedItem('current').value;
-    const next = form.elements.namedItem('next').value;
-    const confirmValue = form.elements.namedItem('confirm').value;
-    const errorEl = $('#password-error');
-    const fail = (msg) => { errorEl.textContent = msg; errorEl.hidden = false; };
-    if (!current) return fail('Enter your current password.');
-    if (next.length < 10) return fail('New password must be at least 10 characters.');
-    if (next !== confirmValue) return fail("New passwords don't match.");
+    const button = form.querySelector('button[type="submit"]');
+    button.disabled = true;
     try {
-      await api('/auth/password', { method: 'POST', body: { current, next } });
+      await api('/auth/password', { method: 'POST', body: Object.fromEntries(new FormData(form)) });
       $('#password-dialog').close();
       toast('Password updated');
     } catch (err) {
-      if (!err.silent) fail(err.message);
+      if (!err.silent) showFormError($('#password-error'), err.message);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function openInviteDialog() {
+    closeMenu();
+    $('#invite-code').textContent = '';
+    $('#invite-error').hidden = true;
+    $('#invite-dialog').showModal();
+    await refreshInvites();
+  }
+
+  async function refreshInvites() {
+    try {
+      const { invites } = await api('/admin/invites');
+      $('#invite-list').replaceChildren(...invites.map((i) => h('li', {},
+        h('code', { text: i.code }),
+        h('span', { class: 'muted', text: i.used_by_name ? `Used by ${i.used_by_name}` : 'Unused' }))));
+      $('#invite-list-section').hidden = !invites.length;
+    } catch (err) {
+      if (!err.silent) showFormError($('#invite-error'), err.message);
+    }
+  }
+
+  async function createInvite() {
+    try {
+      const { code } = await api('/admin/invites', { method: 'POST', body: {} });
+      $('#invite-code').textContent = code;
+      await refreshInvites();
+    } catch (err) {
+      if (!err.silent) showFormError($('#invite-error'), err.message);
     }
   }
 
   function bindAccount() {
-    $('#login-form').addEventListener('submit', signIn);
     $('#user-button').addEventListener('click', (e) => { e.stopPropagation(); toggleMenu(); });
     $('#sign-out-btn').addEventListener('click', signOut);
     $('#change-password-btn').addEventListener('click', openPasswordDialog);
+    $('#invite-btn').addEventListener('click', openInviteDialog);
     $('#password-form').addEventListener('submit', changePassword);
     $('#password-cancel').addEventListener('click', () => $('#password-dialog').close());
+    $('#create-invite').addEventListener('click', createInvite);
+    $('#invite-close').addEventListener('click', () => $('#invite-dialog').close());
     document.addEventListener('click', (e) => { if (!e.target.closest('#user-menu')) closeMenu(); });
     $('#user-dropdown').addEventListener('keydown', (e) => {
       if (e.key === 'Escape') { e.stopPropagation(); closeMenu(); $('#user-button').focus(); }

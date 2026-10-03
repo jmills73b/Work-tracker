@@ -536,26 +536,23 @@ kbd {
 .tl-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
 .timeline-empty { color: var(--text-3); font-size: 13px; }
 
-/* ---------- Sign in ---------- */
-body.logged-out .topbar, body.logged-out .container { display: none; }
-.login { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; }
-.login-card {
-  width: min(380px, 100%);
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 32px 28px 28px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  box-shadow: var(--shadow-md);
-}
-.login-card h1 { margin: 6px 0 0; font-size: 22px; font-weight: 650; letter-spacing: -0.015em; }
-.login-sub { margin: -10px 0 6px; color: var(--text-3); }
+/* ---------- Forms shared with the login page ---------- */
 .brand-mark.lg { width: 44px; height: 44px; border-radius: 12px; }
-.btn.block { width: 100%; justify-content: center; height: 40px; margin-top: 4px; }
+.btn.block { width: 100%; justify-content: center; height: 40px; }
+.btn.is-loading { opacity: 0.7; cursor: progress; }
 .form-error { margin: 0; padding: 8px 11px; border-radius: 8px; background: var(--red-soft); color: var(--red); font-size: 13px; font-weight: 550; }
 .hint { margin: -4px 0 0; color: var(--text-3); font-size: 12.5px; }
+.muted { color: var(--text-3); }
+
+/* ---------- Login page ---------- */
+.auth-page { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px 16px; }
+.auth-main { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 12px; }
+.auth-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; font-size: 18px; font-weight: 650; letter-spacing: -0.01em; }
+.card { display: flex; flex-direction: column; gap: 12px; padding: 24px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-md); }
+.card h1 { margin: 0 0 4px; font-size: 20px; font-weight: 650; letter-spacing: -0.015em; }
+.card form { display: flex; flex-direction: column; gap: 12px; }
+.btn.secondary { width: 100%; justify-content: center; background: transparent; }
+#login-view, #register-view { display: flex; flex-direction: column; gap: 12px; }
 
 /* ---------- User menu ---------- */
 .user-menu { position: relative; }
@@ -611,9 +608,16 @@ body.logged-out .topbar, body.logged-out .container { display: none; }
   box-shadow: var(--shadow-lg);
 }
 .dialog::backdrop { background: var(--scrim); }
-.dialog form { display: flex; flex-direction: column; gap: 14px; padding: 24px; }
+.dialog form, .dialog-body { display: flex; flex-direction: column; gap: 14px; padding: 24px; }
 .dialog h2 { margin: 0 0 4px; font-size: 18px; font-weight: 650; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+
+#create-invite { align-self: flex-start; }
+.invite-code { margin: 0; font: 600 22px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.06em; text-align: center; }
+.invite-code:empty { display: none; }
+.invite-list { margin: 8px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.invite-list li { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+.invite-list code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
 /* ---------- Toasts ---------- */
 .toasts { position: fixed; left: 50%; bottom: 24px; z-index: 60; display: flex; flex-direction: column; align-items: center; gap: 8px; transform: translateX(-50%); pointer-events: none; }
@@ -641,6 +645,9 @@ body.logged-out .topbar, body.logged-out .container { display: none; }
   .topbar { flex-wrap: wrap; gap: 10px; padding: 10px 16px; }
   .search { order: 3; flex-basis: 100%; max-width: none; margin-left: 0; }
   .search kbd { display: none; }
+  .new-task-label, .user-button > svg { display: none; }
+  #new-task { width: 36px; padding: 0; justify-content: center; }
+  .brand-name { font-size: 14px; }
   .btn-label-hide { display: none; }
   .container { padding: 18px 16px 48px; }
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }

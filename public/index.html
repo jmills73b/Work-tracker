@@ -7,30 +7,17 @@
   <meta name="robots" content="noindex, nofollow">
   <title>Work Tracker</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icon-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Tracker">
+  <meta name="theme-color" content="#f6f6f8" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f0f13" media="(prefers-color-scheme: dark)">
   <link rel="stylesheet" href="/app.css">
   <script src="/app.js" defer></script>
 </head>
 <body>
-  <section class="login" id="login" hidden>
-    <form class="login-card" id="login-form" novalidate>
-      <span class="brand-mark lg" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
-      </span>
-      <h1>Sign in</h1>
-      <p class="login-sub">to your Work Tracker</p>
-      <label class="field">
-        <span>Username</span>
-        <input class="input" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="64" required>
-      </label>
-      <label class="field">
-        <span>Password</span>
-        <input class="input" name="password" type="password" autocomplete="current-password" maxlength="200" required>
-      </label>
-      <p class="form-error" id="login-error" role="alert" hidden></p>
-      <button class="btn primary block" type="submit" id="login-submit">Sign in</button>
-    </form>
-  </section>
-
   <header class="topbar">
     <div class="brand">
       <span class="brand-mark" aria-hidden="true">
@@ -57,12 +44,13 @@
         </button>
         <div class="menu" id="user-dropdown" role="menu" hidden>
           <button type="button" role="menuitem" id="change-password-btn">Change password</button>
+          <button type="button" role="menuitem" id="invite-btn" hidden>Invite someone</button>
           <button type="button" role="menuitem" id="sign-out-btn">Sign out</button>
         </div>
       </div>
-      <button id="new-task" class="btn primary" type="button" title="New task (N)">
+      <button id="new-task" class="btn primary" type="button" title="New task (N)" aria-label="New task">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-        <span>New task</span>
+        <span class="new-task-label">New task</span>
       </button>
     </div>
   </header>
@@ -195,27 +183,44 @@
   </aside>
 
   <dialog class="dialog" id="password-dialog" aria-labelledby="password-title">
-    <form id="password-form" novalidate>
+    <form id="password-form">
       <h2 id="password-title">Change password</h2>
       <label class="field">
         <span>Current password</span>
-        <input class="input" name="current" type="password" autocomplete="current-password" maxlength="200" required>
+        <input class="input" name="current_password" type="password" autocomplete="current-password" required>
       </label>
       <label class="field">
         <span>New password</span>
-        <input class="input" name="next" type="password" autocomplete="new-password" maxlength="200" required>
+        <input class="input" name="new_password" type="password" autocomplete="new-password" minlength="8" required>
       </label>
       <label class="field">
         <span>Confirm new password</span>
-        <input class="input" name="confirm" type="password" autocomplete="new-password" maxlength="200" required>
+        <input class="input" name="confirm_password" type="password" autocomplete="new-password" minlength="8" required>
       </label>
-      <p class="hint">At least 10 characters. Your other devices will be signed out.</p>
+      <p class="hint">At least 8 characters. Your other devices will be signed out.</p>
       <p class="form-error" id="password-error" role="alert" hidden></p>
       <div class="dialog-actions">
         <button type="button" class="btn ghost" id="password-cancel">Cancel</button>
         <button type="submit" class="btn primary">Update password</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog class="dialog" id="invite-dialog" aria-labelledby="invite-title">
+    <div class="dialog-body">
+      <h2 id="invite-title">Invite someone</h2>
+      <p class="hint">Each code works once. They enter it on the sign-in page under "Create an account". Their tasks are private to them.</p>
+      <button type="button" class="btn primary" id="create-invite">Create invite code</button>
+      <p class="invite-code" id="invite-code" aria-live="polite"></p>
+      <p class="form-error" id="invite-error" role="alert" hidden></p>
+      <section id="invite-list-section" hidden>
+        <h3 class="eyebrow">Your codes</h3>
+        <ul class="invite-list" id="invite-list"></ul>
+      </section>
+      <div class="dialog-actions">
+        <button type="button" class="btn" id="invite-close">Done</button>
+      </div>
+    </div>
   </dialog>
 
   <div class="toasts" id="toasts" role="status" aria-live="polite"></div>

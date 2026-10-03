@@ -1,2 +1,0 @@
-# Copy to .dev.vars for local development only (never deployed or committed).
-AUTH_PEPPER=local-dev-pepper-not-for-production
