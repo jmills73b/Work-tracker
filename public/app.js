@@ -70,6 +70,25 @@
     return el;
   }
 
+  const SPARK = [
+    'M10 2.5l1.7 4.8a3 3 0 0 0 1.8 1.8L18.3 11l-4.8 1.7a3 3 0 0 0-1.8 1.8L10 19.3l-1.7-4.8a3 3 0 0 0-1.8-1.8L1.7 11l4.8-1.7a3 3 0 0 0 1.8-1.8z',
+    'M19 1.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z',
+    'M19.5 15.5l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6z',
+  ];
+
+  // The assistant's ✨, filled rather than stroked like the other icons.
+  function sparkIcon(size = 16) {
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    for (const [k, v] of Object.entries({ viewBox: '0 0 24 24', width: size, height: size, fill: 'currentColor', 'aria-hidden': 'true' })) svg.setAttribute(k, v);
+    for (const d of SPARK) {
+      const path = document.createElementNS(ns, 'path');
+      path.setAttribute('d', d);
+      svg.append(path);
+    }
+    return svg;
+  }
+
   function icon(name, size = 16) {
     const ns = 'http://www.w3.org/2000/svg';
     const svg = document.createElementNS(ns, 'svg');
@@ -503,6 +522,7 @@
     $('#update-note').value = '';
     $('#update-status').value = '';
     $('#subtask-input').value = '';
+    closeSubtaskSuggestion();
     renderSubtasks([]);
     renderTimeline(null);
     renderMeta(task);
@@ -707,6 +727,13 @@
         onclick: () => toggleSubtask(i),
       }, icon('check', 12)),
       title,
+      state.assistant && !st.done && h('button', {
+        type: 'button', class: 'sub-assist', title: 'Suggest clearer wording', 'aria-label': `Suggest clearer wording: ${st.title}`,
+        onclick: (e) => suggestSubtaskWording(title, e.currentTarget.closest('li'), e.currentTarget, (text) => {
+          title.value = text;
+          renameSubtask(i, title);
+        }),
+      }, sparkIcon(16)),
       dateChip(st.target_date, (value) => setSubtaskDate(i, value), { done: Boolean(st.done) }),
       h('button', {
         type: 'button', class: 'icon-btn subtask-del', title: 'Delete subtask', 'aria-label': `Delete subtask: ${st.title}`,
@@ -908,6 +935,56 @@
     setDirty(true);
     $('#assist-dialog').close();
     toast(state.current ? 'Wording replaced. Save changes to keep it.' : 'Wording replaced');
+  }
+
+  // One subtask at a time: the suggestion opens in place under the row (or under the
+  // "Add a subtask" box) with Keep / Use. It sees the task title and the other subtasks.
+  const subAssist = { run: 0, panel: null, btn: null };
+
+  function closeSubtaskSuggestion() {
+    subAssist.run += 1;
+    subAssist.panel?.remove();
+    subAssist.btn?.classList.remove('is-busy');
+    subAssist.panel = null;
+    subAssist.btn = null;
+  }
+
+  async function suggestSubtaskWording(input, after, btn, onUse) {
+    const title = input.value.trim();
+    if (!title) {
+      toast('Write the subtask first', 'error');
+      input.focus();
+      return;
+    }
+    closeSubtaskSuggestion();
+    const run = subAssist.run;
+    const panel = h(after.tagName === 'LI' ? 'li' : 'div', { class: 'subtask-suggest' },
+      h('p', { class: 'assist-status is-busy', role: 'status', text: 'Reading your subtask…' }));
+    after.after(panel);
+    Object.assign(subAssist, { panel, btn });
+    btn.classList.add('is-busy');
+
+    const close = h('button', { type: 'button', class: 'btn', text: 'Close', onclick: closeSubtaskSuggestion });
+    try {
+      const others = state.subtasks.map((st) => st.title).filter((t) => t !== title);
+      const s = await api('/assist/subtask', { method: 'POST', body: { task_title: field('title').value.trim(), title, others } });
+      if (run !== subAssist.run) return;
+      if (!s.changed) {
+        panel.replaceChildren(h('p', { class: 'assist-status', role: 'status', text: 'This subtask already reads clearly.' }), h('div', { class: 'assist-actions' }, close));
+        return;
+      }
+      panel.replaceChildren(
+        h('div', { class: 'assist-card suggested' }, h('span', { class: 'assist-label', text: 'Suggested' }), h('p', { text: s.title })),
+        s.reason && h('p', { class: 'assist-why', text: s.reason }),
+        h('div', { class: 'assist-actions' },
+          h('button', { type: 'button', class: 'btn', text: 'Keep', onclick: closeSubtaskSuggestion }),
+          h('button', { type: 'button', class: 'btn primary', text: 'Use', onclick: () => { closeSubtaskSuggestion(); onUse(s.title); } })));
+    } catch (err) {
+      if (run !== subAssist.run || err.silent) return;
+      panel.replaceChildren(h('p', { class: 'assist-status', role: 'status', text: err.message }), h('div', { class: 'assist-actions' }, close));
+    } finally {
+      if (run === subAssist.run) btn.classList.remove('is-busy');
+    }
   }
 
   /* ---------- Quick add parser ---------- */
@@ -1420,6 +1497,13 @@
       setDirty(true);
     });
     $('#subtask-add-btn').addEventListener('click', addSubtask);
+    $('#subtask-input-assist').addEventListener('click', (e) => {
+      const input = $('#subtask-input');
+      suggestSubtaskWording(input, $('.subtask-add'), e.currentTarget, (text) => {
+        input.value = text;
+        input.focus();
+      });
+    });
     $('#template-select').addEventListener('change', (e) => applyTemplate(e.target.value));
     $('#save-template-btn').addEventListener('click', saveAsTemplate);
     $('#subtask-input').addEventListener('keydown', (e) => {
@@ -1485,6 +1569,7 @@
     $('#teams-btn').hidden = !user.is_admin;
     state.assistant = Boolean(user.assistant);
     $('#assist-btn').hidden = !state.assistant;
+    $('#subtask-input-assist').hidden = !state.assistant;
   }
 
   async function loadApp() {

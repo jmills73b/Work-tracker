@@ -80,6 +80,7 @@ async function api(request, env, user, method, path) {
   if (path === '/api/auth/password' && method === 'POST') return auth.changePassword(request, env, user);
 
   if (path === '/api/assist' && method === 'POST') return assist.suggest(request, env, user);
+  if (path === '/api/assist/subtask' && method === 'POST') return assist.suggestSubtask(request, env, user);
 
   if (path === '/api/teams' && method === 'GET') return teams.get(env);
   if (path === '/api/admin/teams' && method === 'POST') return teams.create(request, env);

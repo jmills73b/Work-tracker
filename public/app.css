@@ -779,14 +779,15 @@ input[type="date"].input::-webkit-date-and-time-value { text-align: left; margin
   /* Phones: the date drops under the title so the title keeps the width. */
   .subtask {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    grid-template-areas: "check title del" ". date date";
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-areas: "check title assist del" ". date date date";
     column-gap: 10px;
     align-items: center;
   }
   .subtask > .check { grid-area: check; }
   .subtask > .subtask-title { grid-area: title; }
   .subtask > .subtask-del { grid-area: del; }
+  .subtask > .sub-assist { grid-area: assist; }
   .subtask > .date-chip-wrap { grid-area: date; justify-self: start; margin: -4px 0 8px; }
 }
 
@@ -890,3 +891,34 @@ input[type="date"].input::-webkit-date-and-time-value { text-align: left; margin
   .assist-card p { font-size: 13.5px; }
   .assist-field .assist-card p { max-height: 30dvh; overflow-y: auto; }
 }
+
+/* The ✨ on a subtask row and beside "Add a subtask", and its suggestion in place. */
+.sub-assist {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--accent);
+  opacity: 0.75;
+  cursor: pointer;
+}
+.sub-assist:hover, .sub-assist:focus-visible { opacity: 1; background: var(--accent-soft); }
+.subtask-add .sub-assist { width: 40px; height: auto; border: 1px solid var(--border-strong); background: var(--accent-soft); opacity: 1; }
+.sub-assist.is-busy svg { display: none; }
+.sub-assist.is-busy::after {
+  content: "";
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: assist-spin 0.8s linear infinite;
+}
+.subtask-suggest { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; padding: 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); list-style: none; }
+.subtask-suggest .assist-why { margin: 0; }
+.subtask-suggest .assist-actions .btn { height: 36px; }
+@media (pointer: coarse) { .sub-assist { width: 40px; height: 40px; } }

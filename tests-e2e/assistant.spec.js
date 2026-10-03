@@ -87,3 +87,51 @@ test('a task that already reads clearly gets a plain answer and no Replace butto
   await sheet.getByRole('button', { name: 'Close' }).click();
   await expect(sheet).toBeHidden();
 });
+
+test('a subtask gets its own suggestion in place, using the task for context; Use renames it', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.route('**/api/auth/me', async (route) => {
+    const res = await route.fetch();
+    await route.fulfill({ response: res, json: { ...(await res.json()), assistant: true } });
+  });
+  const asked = [];
+  await page.route('**/api/assist/subtask', async (route) => {
+    asked.push(route.request().postDataJSON());
+    await route.fulfill({ json: { title: 'Raise a ticket for the RDH access issue', reason: 'Says what the ticket is for.', changed: true } });
+  });
+  await signIn(page);
+
+  await page.keyboard.press('n');
+  await page.locator('#quick-input').fill('Fix RDH access');
+  await page.locator('#quick-input').press('Enter');
+  await page.locator('.row', { hasText: 'Fix RDH access' }).first().click();
+  const drawer = page.locator('#drawer');
+  for (const t of ['Ask Sarah', 'ticket??']) {
+    await drawer.locator('#subtask-input').fill(t);
+    await drawer.locator('#subtask-input').press('Enter');
+  }
+  const row = drawer.locator('.subtask').filter({ has: page.locator('.subtask-title[value="ticket??"]') });
+  await row.getByRole('button', { name: 'Suggest clearer wording: ticket??' }).click();
+
+  const panel = drawer.locator('.subtask-suggest');
+  await expect(panel).toContainText('Raise a ticket for the RDH access issue');
+  await expect(panel).toContainText('Says what the ticket is for.');
+  expect(asked).toEqual([{ task_title: 'Fix RDH access', title: 'ticket??', others: ['Ask Sarah'] }]);
+  // Inside the phone's width.
+  expect((await panel.boundingBox()).x + (await panel.boundingBox()).width).toBeLessThanOrEqual(375);
+
+  await panel.getByRole('button', { name: 'Use' }).click();
+  await expect(panel).toHaveCount(0);
+  await expect(drawer.locator('.subtask-title').nth(1)).toHaveValue('Raise a ticket for the RDH access issue');
+
+  // Saved straight away, like any subtask rename: still there after reopening.
+  await page.keyboard.press('Escape');
+  await page.locator('.row', { hasText: 'Fix RDH access' }).first().click();
+  await expect(drawer.locator('.subtask-title').nth(1)).toHaveValue('Raise a ticket for the RDH access issue');
+
+  // The "Add a subtask" box has one too; Use fills the box for you to add.
+  await drawer.locator('#subtask-input').fill('chase');
+  await drawer.locator('#subtask-input-assist').click();
+  await drawer.locator('.subtask-suggest').getByRole('button', { name: 'Use' }).click();
+  await expect(drawer.locator('#subtask-input')).toHaveValue('Raise a ticket for the RDH access issue');
+});

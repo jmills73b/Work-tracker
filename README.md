@@ -10,7 +10,7 @@ A clean, private tracker for your own tasks. Capture a task, set its priority an
 - **Quick add**: type `Board deck fri !high #RDH` and it becomes a High task due Friday for RDH, with a preview before saving
 - **Teams**: each task can belong to a team (Dev Ops, RDH, GDS, or none), with a team filter on the list and board; admins manage the team list
 - **Templates**: save any task as a template, then start new tasks from it with the subtask dates laid out again
-- **Task assistant**: tap ✨ beside a title for a clearer, more concise wording of the title and description, shown side by side with yours. Replace or keep the original. Uses Claude Haiku (about 0.15p a suggestion, capped at 30 an hour)
+- **Task assistant**: tap ✨ beside a title for a clearer, more concise wording of the title and description, shown side by side with yours. Replace or keep the original. Each subtask has its own ✨ too, which rewords that one step using the task for context. Uses Claude Haiku (about 0.15p a suggestion, capped at 30 an hour)
 - **Task drawer** for editing and posting updates. Status, priority, date and subtask changes are logged automatically
 - Search, filters, sorting, light/dark mode. Laid out for iPhone and iPad as well as desktop, and can be added to the Home Screen
 - Email and password sign-in. The first account is the admin and can invite others; everyone's tasks are private

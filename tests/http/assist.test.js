@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ASSIST_MAX_PER_WINDOW, ASSIST_MODEL, SYSTEM_PROMPT } from '../../src/domain/assist.js';
-import { suggest } from '../../src/http/assist.js';
+import { ASSIST_MAX_PER_WINDOW, ASSIST_MODEL, SUBTASK_PROMPT, SYSTEM_PROMPT } from '../../src/domain/assist.js';
+import { suggest, suggestSubtask } from '../../src/http/assist.js';
 import { me } from '../../src/http/auth.js';
 import { makeClient } from '../../src/infra/assistClient.js';
 import { route } from '../../src/index.js';
@@ -21,7 +21,8 @@ const message = (text, stop_reason = 'end_turn') => ({
   content: [{ type: 'text', text }], usage: { input_tokens: 900, output_tokens: 60 },
 });
 
-const env = (db = fakeDb()) => ({ DB: db, ANTHROPIC_API_KEY: KEY });
+const TEAMS = { all: [['FROM teams', [{ id: 1, name: 'Dev Ops' }, { id: 2, name: 'RDH' }]]] };
+const env = (db = fakeDb(TEAMS)) => ({ DB: db, ANTHROPIC_API_KEY: KEY });
 
 describe('POST /api/assist', () => {
   it('asks the cheap model for JSON, with the key in a header and the task in the message', async () => {
@@ -37,7 +38,7 @@ describe('POST /api/assist', () => {
     const body = JSON.parse(init.body);
     expect(body.model).toBe('claude-haiku-4-5');
     expect(body.system).toBe(SYSTEM_PROMPT);
-    expect(body.messages).toEqual([{ role: 'user', content: '<task><title>need to sort out the RDH thing asap</title><description></description></task>' }]);
+    expect(body.messages).toEqual([{ role: 'user', content: '<teams>Dev Ops, RDH</teams>\n<task><title>need to sort out the RDH thing asap</title><description></description></task>' }]);
     expect(body.output_config.format.type).toBe('json_schema');
     expect(body).not.toHaveProperty('thinking');
   });
@@ -51,7 +52,7 @@ describe('POST /api/assist', () => {
   });
 
   it('refuses once the hourly allowance is used, without calling the API', async () => {
-    const db = fakeDb({ first: [['FROM assist_usage', { window_start: new Date().toISOString(), count: ASSIST_MAX_PER_WINDOW }]] });
+    const db = fakeDb({ ...TEAMS, first: [['FROM assist_usage', { window_start: new Date().toISOString(), count: ASSIST_MAX_PER_WINDOW }]] });
     const { fetchImpl, client } = apiReturning(200, message('{}'));
     const res = await suggest(jsonRequest('/api/assist', TASK), env(db), USER, { client });
     expect(res.status).toBe(429);
@@ -98,6 +99,34 @@ describe('POST /api/assist', () => {
     expect(anon.status).toBe(401);
     const cross = await route(new Request('https://t.test/api/assist', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://evil.test' }, body: '{}' }), env(db));
     expect(cross.status).toBe(403);
+  });
+});
+
+describe('POST /api/assist/subtask', () => {
+  const SUB = { task_title: 'Fix RDH day-one access for new starters', title: 'ticket??', others: ['Ask Sarah about the AD group'] };
+
+  it('sends the subtask prompt with its task and siblings, and returns the reworded step', async () => {
+    const { fetchImpl, client } = apiReturning(200, message(JSON.stringify({ title: 'Raise a ticket for the RDH access issue', reason: 'Says what it is for.' })));
+    const res = await suggestSubtask(jsonRequest('/api/assist/subtask', SUB), env(), USER, { client });
+    expect(await res.json()).toEqual({ title: 'Raise a ticket for the RDH access issue', reason: 'Says what it is for.', changed: true });
+    const body = JSON.parse(fetchImpl.mock.calls[0][1].body);
+    expect(body.model).toBe('claude-haiku-4-5');
+    expect(body.system).toBe(SUBTASK_PROMPT);
+    expect(body.messages[0].content).toBe('<teams>Dev Ops, RDH</teams>\n<task>Fix RDH day-one access for new starters</task>\n<others><other>Ask Sarah about the AD group</other></others>\n<subtask>ticket??</subtask>');
+    expect(body.output_config.format.schema.required).toEqual(['title', 'reason']);
+  });
+
+  it('shares the hourly allowance with the task assistant', async () => {
+    const db = fakeDb({ ...TEAMS, first: [['FROM assist_usage', { window_start: new Date().toISOString(), count: ASSIST_MAX_PER_WINDOW }]] });
+    const { fetchImpl, client } = apiReturning(200, message('{}'));
+    const res = await suggestSubtask(jsonRequest('/api/assist/subtask', SUB), env(db), USER, { client });
+    expect(res.status).toBe(429);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('is routed behind the session gate', async () => {
+    const res = await route(new Request('https://t.test/api/assist/subtask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }), env());
+    expect(res.status).toBe(401);
   });
 });
 

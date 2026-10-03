@@ -1,16 +1,28 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { shapeSuggestion, validateAssistInput } from '../domain/assist.js';
-import { AssistUnavailable, makeClient, requestSuggestion } from '../infra/assistClient.js';
+import { shapeSubtaskSuggestion, shapeSuggestion, validateAssistInput, validateSubtaskInput } from '../domain/assist.js';
+import { AssistUnavailable, makeClient, requestSubtaskSuggestion, requestSuggestion } from '../infra/assistClient.js';
 import { take } from '../infra/assistUsageRepo.js';
+import { listTeams } from '../infra/teamsRepo.js';
 import { json } from './respond.js';
 
 export const isEnabled = (env) => Boolean(env.ANTHROPIC_API_KEY);
 
 // Body: { title, description }. Nothing is saved: the page shows the suggestion and the
 // person decides.
-export async function suggest(request, env, user, { client } = {}) {
+export function suggest(request, env, user, options) {
+  return run(request, env, user, options, validateAssistInput, requestSuggestion, shapeSuggestion);
+}
+
+// Body: { task_title, title, others }: one subtask, with its task and siblings as context.
+export function suggestSubtask(request, env, user, options) {
+  return run(request, env, user, options, validateSubtaskInput, requestSubtaskSuggestion, shapeSubtaskSuggestion);
+}
+
+// Check → count against the hourly allowance → one call → shape. Both kinds share the
+// allowance and the error messages.
+async function run(request, env, user, { client } = {}, validate, call, shape) {
   if (!isEnabled(env)) return json({ error: "The assistant isn't set up yet" }, 503);
-  const { value, error } = validateAssistInput(await request.json());
+  const { value, error } = validate(await request.json());
   if (error) return json({ error }, 400);
 
   const usage = await take(env, user.id);
@@ -20,8 +32,8 @@ export async function suggest(request, env, user, { client } = {}) {
   }
 
   try {
-    const raw = await requestSuggestion(client ?? makeClient(env), value);
-    const suggestion = shapeSuggestion(raw, value);
+    const teams = (await listTeams(env)).map((t) => t.name);
+    const suggestion = shape(await call(client ?? makeClient(env), value, teams), value);
     if (!suggestion) throw new AssistUnavailable('unparseable reply');
     return json(suggestion);
   } catch (e) {

@@ -1,5 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { ASSIST_MAX_TOKENS, ASSIST_MODEL, OUTPUT_SCHEMA, SYSTEM_PROMPT, userMessage } from '../domain/assist.js';
+import {
+  ASSIST_MAX_TOKENS, ASSIST_MODEL, OUTPUT_SCHEMA, SUBTASK_PROMPT, SUBTASK_SCHEMA, subtaskMessage, SYSTEM_PROMPT, userMessage,
+} from '../domain/assist.js';
 
 export class AssistUnavailable extends Error {}
 
@@ -10,16 +12,20 @@ export function makeClient(env, options = {}) {
 
 // Returns the model's JSON text. Throws the SDK's own errors for API failures and
 // AssistUnavailable when the reply can't be used.
-export async function requestSuggestion(client, task) {
+async function ask(client, system, content, schema) {
   const response = await client.messages.create({
     model: ASSIST_MODEL,
     max_tokens: ASSIST_MAX_TOKENS,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: userMessage(task) }],
-    output_config: { format: { type: 'json_schema', schema: OUTPUT_SCHEMA } },
+    system,
+    messages: [{ role: 'user', content }],
+    output_config: { format: { type: 'json_schema', schema } },
   });
   if (response.stop_reason !== 'end_turn') throw new AssistUnavailable(`stop_reason ${response.stop_reason}`);
   const block = response.content.find((b) => b.type === 'text');
   if (!block) throw new AssistUnavailable('no text block');
   return block.text;
 }
+
+export const requestSuggestion = (client, task, teams) => ask(client, SYSTEM_PROMPT, userMessage(task, teams), OUTPUT_SCHEMA);
+
+export const requestSubtaskSuggestion = (client, subtask, teams) => ask(client, SUBTASK_PROMPT, subtaskMessage(subtask, teams), SUBTASK_SCHEMA);
