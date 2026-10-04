@@ -1,9 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk';
 import {
-  shapeSubtaskSuggestion, shapeSuggestion, shapeUpdateSuggestion, validateAssistInput, validateSubtaskInput, validateUpdateInput,
+  shapeSuggestion, shapeUpdateSuggestion, validateAssistInput, validateUpdateInput,
 } from '../domain/assist.js';
 import {
-  AssistUnavailable, makeClient, requestSubtaskSuggestion, requestSuggestion, requestUpdateSuggestion,
+  AssistUnavailable, makeClient, requestSuggestion, requestUpdateSuggestion,
 } from '../infra/assistClient.js';
 import { take } from '../infra/assistUsageRepo.js';
 import { listTeams } from '../infra/teamsRepo.js';
@@ -11,15 +11,10 @@ import { json } from './respond.js';
 
 export const isEnabled = (env) => Boolean(env.ANTHROPIC_API_KEY);
 
-// Body: { title, description }. Nothing is saved: the page shows the suggestion and the
-// person decides.
+// Body: { title, description, steps }. Nothing is saved: the page shows the suggestion
+// and the person decides.
 export function suggest(request, env, user, options) {
   return run(request, env, user, options, validateAssistInput, requestSuggestion, shapeSuggestion);
-}
-
-// Body: { task_title, title, others }: one subtask, with its task and siblings as context.
-export function suggestSubtask(request, env, user, options) {
-  return run(request, env, user, options, validateSubtaskInput, requestSubtaskSuggestion, shapeSubtaskSuggestion);
 }
 
 // Body: { task_title, note }: a rough progress note to tidy before posting.

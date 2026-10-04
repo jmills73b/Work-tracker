@@ -23,8 +23,9 @@ test('the assistant shows yours and its suggestion side by side; Keep changes no
       json: {
         title: 'Fix RDH day-one access for new starters',
         description: "New starters can't access RDH on day one.",
+        steps: [],
         reason: 'Leads with the action and drops filler.',
-        changed: { title: true, description: true },
+        changed: { title: true, description: true, steps: [] },
       },
     });
   });
@@ -43,7 +44,7 @@ test('the assistant shows yours and its suggestion side by side; Keep changes no
   await expect(sheet.locator('#assist-title-new')).toHaveText('Fix RDH day-one access for new starters');
   await expect(sheet.locator('#assist-desc-new')).toHaveText("New starters can't access RDH on day one.");
   await expect(sheet.locator('#assist-why')).toHaveText('Leads with the action and drops filler.');
-  expect(asked).toEqual([{ title: 'need to sort out the RDH thing asap', description: 'new starters cant get in on day 1' }]);
+  expect(asked).toEqual([{ title: 'need to sort out the RDH thing asap', description: 'new starters cant get in on day 1', steps: [] }]);
 
   // Side by side, inside the phone's width.
   const [yours, suggested] = await sheet.locator('#assist-title-field .assist-card').evaluateAll((cards) => cards.map((c) => c.getBoundingClientRect()));
@@ -63,7 +64,11 @@ test('the assistant shows yours and its suggestion side by side; Keep changes no
   await expect(sheet).toBeHidden();
   await expect(drawer.locator('[name=title]')).toHaveValue('Fix RDH day-one access for new starters');
   await expect(drawer.locator('[name=description]')).toHaveValue("New starters can't access RDH on day one.");
-  await drawer.getByRole('button', { name: 'Save changes' }).click();
+  // Replaced words save like typed ones: no save button.
+  await expect(drawer.locator('#timeline')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.row', { hasText: 'Fix RDH day-one access for new starters' })).toBeVisible();
+  await page.reload();
   await expect(page.locator('.row', { hasText: 'Fix RDH day-one access for new starters' })).toBeVisible();
 });
 
@@ -73,7 +78,7 @@ test('a task that already reads clearly gets a plain answer and no Replace butto
     await route.fulfill({ response: res, json: { ...(await res.json()), assistant: true } });
   });
   await page.route('**/api/assist', (route) => route.fulfill({
-    json: { title: 'Book Q3 review', description: '', reason: 'Already clear.', changed: { title: false, description: false } },
+    json: { title: 'Book Q3 review', description: '', steps: [], reason: 'Already clear.', changed: { title: false, description: false, steps: [] } },
   }));
   await signIn(page);
   await page.keyboard.press('n');
@@ -88,56 +93,57 @@ test('a task that already reads clearly gets a plain answer and no Replace butto
   await expect(sheet).toBeHidden();
 });
 
-test('a subtask gets its own suggestion in place, using the task for context; Use renames it', async ({ page }) => {
-  await page.setViewportSize({ width: 375, height: 812 });
+test('Tidy covers the steps too: each changed step has its own tick, and only ticked ones are renamed', async ({ page }) => {
   await page.route('**/api/auth/me', async (route) => {
     const res = await route.fetch();
     await route.fulfill({ response: res, json: { ...(await res.json()), assistant: true } });
   });
   const asked = [];
-  await page.route('**/api/assist/subtask', async (route) => {
+  await page.route('**/api/assist', async (route) => {
     asked.push(route.request().postDataJSON());
-    await route.fulfill({ json: { title: 'Raise a ticket for the RDH access issue', reason: 'Says what the ticket is for.', changed: true } });
+    await route.fulfill({
+      json: {
+        title: 'Fix RDH day-one access for new starters',
+        description: '',
+        steps: ['Ask Sarah about the AD group', 'Raise a ticket for the RDH access issue'],
+        reason: 'Steps lead with a verb.',
+        changed: { title: false, description: false, steps: [true, true] },
+      },
+    });
   });
   await signIn(page);
-
   await page.keyboard.press('n');
-  await page.locator('#quick-input').fill('Fix RDH access');
+  await page.locator('#quick-input').fill('Fix RDH day-one access for new starters');
   await page.locator('#quick-input').press('Enter');
-  await page.locator('.row', { hasText: 'Fix RDH access' }).first().click();
+  await page.locator('.row', { hasText: 'Fix RDH day-one access for new starters' }).first().click();
   const drawer = page.locator('#drawer');
-  for (const [i, t] of ['Ask Sarah', 'ticket??'].entries()) {
-    await drawer.locator('#subtask-input').fill(t);
-    await drawer.locator('#subtask-input').press('Enter');
+  for (const [i, t] of ['done already', 'ask sarah re AD', 'ticket??'].entries()) {
+    await drawer.locator('#step-input').fill(t);
+    await drawer.locator('#step-input').press('Enter');
     await expect(drawer.locator('.subtask-title').nth(i)).toHaveValue(t);
   }
-  const row = drawer.locator('.subtask').filter({ has: page.locator('.subtask-title[value="ticket??"]') });
-  await row.getByRole('button', { name: 'Suggest clearer wording: ticket??' }).click();
+  await drawer.locator('.subtask').first().locator('.check').click();
+  await expect(drawer.locator('#step-count')).toHaveText('1 of 3 done');
+  // One ✨ for the whole task: none on the steps or the add-step box.
+  await expect(drawer.locator('.subtasks .sub-assist, .subtasks .assist-btn')).toHaveCount(0);
 
-  const panel = drawer.locator('.subtask-suggest');
-  await expect(panel).toContainText('Raise a ticket for the RDH access issue');
-  await expect(panel).toContainText('Says what the ticket is for.');
-  expect(asked).toEqual([{ task_title: 'Fix RDH access', title: 'ticket??', others: ['Ask Sarah'] }]);
-  // Inside the phone's width.
-  expect((await panel.boundingBox()).x + (await panel.boundingBox()).width).toBeLessThanOrEqual(375);
+  await page.locator('#assist-btn').click();
+  const sheet = page.locator('#assist-dialog');
+  await expect(sheet.locator('.assist-step')).toHaveCount(2);
+  // Only the open steps are sent.
+  expect(asked[0].steps).toEqual(['ask sarah re AD', 'ticket??']);
+  await sheet.locator('.assist-step').first().locator('input').uncheck();
+  await sheet.getByRole('button', { name: 'Replace' }).click();
+  await expect(drawer.locator('.subtask-title').nth(2)).toHaveValue('Raise a ticket for the RDH access issue');
+  await expect(drawer.locator('.subtask-title').nth(1)).toHaveValue('ask sarah re AD');
 
-  await panel.getByRole('button', { name: 'Use' }).click();
-  await expect(panel).toHaveCount(0);
-  await expect(drawer.locator('.subtask-title').nth(1)).toHaveValue('Raise a ticket for the RDH access issue');
-
-  // Saved straight away, like any subtask rename: still there after reopening.
+  // Saved straight away, like any step rename: still there after reopening.
   await page.keyboard.press('Escape');
-  await page.locator('.row', { hasText: 'Fix RDH access' }).first().click();
-  await expect(drawer.locator('.subtask-title').nth(1)).toHaveValue('Raise a ticket for the RDH access issue');
-
-  // The "Add a subtask" box has one too; Use fills the box for you to add.
-  await drawer.locator('#subtask-input').fill('chase');
-  await drawer.locator('#subtask-input-assist').click();
-  await drawer.locator('.subtask-suggest').getByRole('button', { name: 'Use' }).click();
-  await expect(drawer.locator('#subtask-input')).toHaveValue('Raise a ticket for the RDH access issue');
+  await page.locator('.row', { hasText: 'Fix RDH day-one access for new starters' }).first().click();
+  await expect(drawer.locator('.subtask-title').nth(2)).toHaveValue('Raise a ticket for the RDH access issue');
 });
 
-test('Tidy shows your update and the tidied one side by side; Replace fills the box and nothing posts until Post update', async ({ page }) => {
+test('Tidy shows your log entry and the tidied one side by side; Replace fills the box and nothing posts until Post', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await page.route('**/api/auth/me', async (route) => {
     const res = await route.fetch();
@@ -155,8 +161,8 @@ test('Tidy shows your update and the tidied one side by side; Replace fills the 
   await page.locator('.row', { hasText: 'Tidy test task' }).first().click();
 
   const drawer = page.locator('#drawer');
-  await drawer.locator('#update-note').fill('spoke 2 sarah, raised ticket re AD grp');
-  await drawer.getByRole('button', { name: 'Tidy this update' }).click();
+  await drawer.locator('#log-note').fill('spoke 2 sarah, raised ticket re AD grp');
+  await drawer.getByRole('button', { name: 'Tidy this entry' }).click();
   const panel = drawer.locator('.update-suggest');
   await expect(panel.locator('.assist-card').first()).toContainText('spoke 2 sarah, raised ticket re AD grp');
   await expect(panel.locator('.assist-card.suggested')).toContainText('Spoke to Sarah. Ticket raised for the AD group.');
@@ -166,9 +172,9 @@ test('Tidy shows your update and the tidied one side by side; Replace fills the 
 
   await panel.getByRole('button', { name: 'Replace' }).click();
   await expect(panel).toHaveCount(0);
-  await expect(drawer.locator('#update-note')).toHaveValue('Spoke to Sarah. Ticket raised for the AD group.');
+  await expect(drawer.locator('#log-note')).toHaveValue('Spoke to Sarah. Ticket raised for the AD group.');
   await expect(drawer.locator('#timeline')).not.toContainText('Spoke to Sarah');
 
-  await drawer.getByRole('button', { name: 'Post update' }).click();
+  await drawer.locator('#post-log').click();
   await expect(drawer.locator('#timeline')).toContainText('Spoke to Sarah. Ticket raised for the AD group.');
 });

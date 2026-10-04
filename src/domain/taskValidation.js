@@ -1,9 +1,5 @@
+import { isDate, PRIORITY, STATUS } from '../../public/shared/rules.js';
 import { validateRecurrence } from './recurrence.js';
-
-export const STATUS_LABELS = { todo: 'To do', in_progress: 'In progress', blocked: 'Blocked', done: 'Done' };
-export const PRIORITY_LABELS = { low: 'Low', medium: 'Medium', high: 'High', urgent: 'Urgent' };
-
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function isObject(v) {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -18,14 +14,10 @@ function text(value, name, max, { required = false } = {}) {
 }
 
 export function validStatus(v) {
-  return Object.hasOwn(STATUS_LABELS, v);
+  return Object.hasOwn(STATUS, v);
 }
 
-function validDate(v) {
-  if (!DATE_RE.test(v)) return false;
-  const d = new Date(`${v}T00:00:00Z`);
-  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
-}
+const validDate = isDate;
 
 // Returns { value } with only whitelisted, validated fields, or { error }.
 export function validateTask(input, { partial = false } = {}) {
@@ -53,14 +45,23 @@ export function validateTask(input, { partial = false } = {}) {
     out.status = input.status;
   }
   if ('priority' in input) {
-    if (!Object.hasOwn(PRIORITY_LABELS, input.priority)) return { error: 'Invalid priority' };
+    if (!Object.hasOwn(PRIORITY, input.priority)) return { error: 'Invalid priority' };
     out.priority = input.priority;
   }
   if ('target_date' in input) {
     const v = input.target_date;
     if (v === null || v === '') out.target_date = null;
     else if (typeof v === 'string' && validDate(v)) out.target_date = v;
-    else return { error: 'Target date must be YYYY-MM-DD' };
+    else return { error: 'Due date must be YYYY-MM-DD' };
+  }
+
+  // Waiting's "chase on" date, and the day the task is planned for (the daily plan).
+  for (const key of ['waiting_until', 'planned_on']) {
+    if (!(key in input)) continue;
+    const v = input[key];
+    if (v === null || v === '') out[key] = null;
+    else if (typeof v === 'string' && validDate(v)) out[key] = v;
+    else return { error: 'Dates must be YYYY-MM-DD' };
   }
 
   if ('recurrence' in input) {
@@ -96,7 +97,7 @@ function subtaskTitle(value) {
 function optionalDate(v) {
   if (v === null || v === '') return { value: null };
   if (typeof v === 'string' && validDate(v)) return { value: v };
-  return { error: 'Target date must be YYYY-MM-DD' };
+  return { error: 'Due date must be YYYY-MM-DD' };
 }
 
 export function validateSubtaskCreate(input) {
@@ -135,10 +136,6 @@ export function validateUpdate(input) {
   if (!isObject(input)) return { error: 'Invalid request body' };
   const r = text(input.note ?? '', 'Update', 2000, { required: true });
   if (r.error) return r;
-  const out = { note: r.value, status: null };
-  if (input.status != null) {
-    if (!validStatus(input.status)) return { error: 'Invalid status' };
-    out.status = input.status;
-  }
-  return { value: out };
+  // A log entry is only words now; status changes have one place of their own.
+  return { value: { note: r.value, status: null } };
 }

@@ -36,11 +36,12 @@ describe('marking a recurring task done', () => {
     expect(stmts.some((s) => s.params?.includes('Next occurrence created, due 2999-01-11'))).toBe(true);
   });
 
-  it('does the same when done comes with a progress update', async () => {
+  it('a log entry never changes status, so it never creates the next one', async () => {
     const d = db();
     const res = await postUpdate(jsonRequest('/api/tasks/t1/updates', { note: 'All sorted', status: 'done' }), { DB: d }, USER, 't1');
     expect(res.status).toBe(201);
-    expect(batched(d).some((s) => s.sql.includes('INSERT INTO tasks'))).toBe(true);
+    expect(batched(d).some((s) => s.sql.includes('INSERT INTO tasks'))).toBe(false);
+    expect(batched(d).some((s) => /UPDATE tasks SET[^]*status/.test(s.sql))).toBe(false);
   });
 
   it('creates nothing for a task that does not repeat, or that already made its next one', async () => {

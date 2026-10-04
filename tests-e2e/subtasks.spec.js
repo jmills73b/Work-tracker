@@ -1,9 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { signIn } from './helpers.js';
 
-// Adding a subtask clears the box when the save returns. If the next subtask was already
+// Adding a step clears the box when the save returns. If the next step was already
 // being typed by then, clearing wiped it (seen in CI). Only what was sent is cleared now.
-test('typing the next subtask while the last one is still saving keeps what was typed', async ({ page }) => {
+test('typing the next step while the last one is still saving keeps what was typed', async ({ page }) => {
   await signIn(page);
   await page.keyboard.press('n');
   await page.locator('#quick-input').fill('Slow network task');
@@ -16,7 +16,7 @@ test('typing the next subtask while the last one is still saving keeps what was 
     await held;
     await route.continue();
   });
-  const input = page.locator('#subtask-input');
+  const input = page.locator('#step-input');
   await input.fill('First step');
   await input.press('Enter');
   await input.fill('Second st');

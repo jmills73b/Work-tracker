@@ -1,3 +1,5 @@
+import { addDays, daysBetween, DONE, HIGH, WAITING } from '../../public/shared/rules.js';
+
 // Reminder digests: when one is due, and what it says. Pure: callers pass "now".
 // Up to three times a day. A time from 17:00 on is an evening digest, which also looks
 // ahead to everything due tomorrow.
@@ -50,20 +52,20 @@ export function digestDue(settings, now) {
 
 export const isEvening = (time) => time >= EVENING_FROM;
 
-const addDays = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
-const daysBetween = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000);
 
 // What needs attention on `today` (the user's local date). Tasks come with their subtasks
 // attached, as listTasks returns them. Done tasks and done subtasks never count.
-// In the evening, `allTomorrow` lists everything due tomorrow (subtasks too), not just
-// Urgent and High tasks.
+// In the evening, `allTomorrow` lists everything due tomorrow (steps too), not just High
+// tasks. A Waiting task whose chase date has come is listed to chase.
 export function collectDue(tasks, today, { includeTomorrow = true, allTomorrow = false } = {}) {
   const overdue = [];
   const dueToday = [];
   const tomorrow = [];
+  const chase = [];
   const tomorrowDate = addDays(today, 1);
   for (const t of tasks) {
-    if (t.status === 'done') continue;
+    if (t.status === DONE) continue;
+    if (t.status === WAITING && t.waiting_until && t.waiting_until <= today) chase.push({ title: t.title, date: t.waiting_until });
     const items = [{ title: t.title, date: t.target_date, priority: t.priority }];
     for (const st of t.subtasks || []) {
       if (!st.done) items.push({ title: `${st.title} (${t.title})`, date: st.target_date, priority: t.priority, subtask: true });
@@ -73,11 +75,11 @@ export function collectDue(tasks, today, { includeTomorrow = true, allTomorrow =
       if (item.date < today) overdue.push({ ...item, daysLate: daysBetween(item.date, today) });
       else if (item.date === today) dueToday.push(item);
       else if (item.date === tomorrowDate && (allTomorrow
-        || (includeTomorrow && !item.subtask && (item.priority === 'urgent' || item.priority === 'high')))) tomorrow.push(item);
+        || (includeTomorrow && !item.subtask && item.priority === HIGH))) tomorrow.push(item);
     }
   }
   overdue.sort((a, b) => b.daysLate - a.daysLate || a.title.localeCompare(b.title));
-  return { overdue, dueToday, tomorrow };
+  return { overdue, dueToday, tomorrow, chase };
 }
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -85,24 +87,27 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 // The notification, or null when there is nothing to say (no news is no notification).
 // Each digest replaces the last one on the device (same tag), so the phone shows only
 // the latest picture.
+// The evening one opens the "plan tomorrow" screen when tapped.
 export function buildDigest(due, today, { evening = false } = {}) {
-  const { overdue, dueToday, tomorrow } = due;
-  if (!overdue.length && !dueToday.length && !tomorrow.length) return null;
+  const { overdue, dueToday, tomorrow, chase = [] } = due;
+  if (!overdue.length && !dueToday.length && !tomorrow.length && !chase.length) return null;
 
   const counts = [];
   if (overdue.length) counts.push(`${overdue.length} overdue`);
   if (dueToday.length) counts.push(`${dueToday.length} ${evening ? 'still due today' : 'due today'}`);
-  if (tomorrow.length) counts.push(evening ? `${tomorrow.length} due tomorrow` : `${plural(tomorrow.length, 'priority task')} due tomorrow`);
+  if (tomorrow.length) counts.push(evening ? `${tomorrow.length} due tomorrow` : `${plural(tomorrow.length, 'High task')} due tomorrow`);
+  if (chase.length) counts.push(`${chase.length} to chase`);
 
   const lines = [
     ...overdue.map((i) => `• ${i.title}, ${i.daysLate}d overdue`),
     ...dueToday.map((i) => `• ${i.title}, today`),
+    ...chase.map((i) => `• Chase: ${i.title}`),
     ...tomorrow.map((i) => `• ${i.title}, tomorrow`),
   ];
   const shown = lines.slice(0, MAX_LINES);
   if (lines.length > shown.length) shown.push(`+${lines.length - shown.length} more`);
 
-  return { title: counts.join(' · '), body: shown.join('\n'), tag: `digest-${today}`, url: '/' };
+  return { title: counts.join(' · '), body: shown.join('\n'), tag: `digest-${today}`, url: evening ? '/?plan=tomorrow' : '/' };
 }
 
 export const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;

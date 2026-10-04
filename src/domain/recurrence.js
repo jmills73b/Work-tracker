@@ -3,7 +3,9 @@
 //   monthly:N  every N months (N = 1, 2, 3, 6 or 12), from the target date, same day of month
 //   after:N    N days (1–365) after the day it was marked done
 // Marking a recurring task done creates the next one; the done task keeps its history.
-import { dayOffset } from './templates.js';
+import { addDays, addMonths, daysBetween } from '../../public/shared/rules.js';
+
+export { addDays, addMonths };
 
 const PATTERN = /^(?:weekly:[1-4]|monthly:(?:1|2|3|6|12)|after:(?:[1-9]\d?|[1-2]\d\d|3[0-5]\d|36[0-5]))$/;
 
@@ -21,24 +23,6 @@ export function describeRecurrence(r) {
   if (kind === 'weekly') return n === 1 ? 'every week' : `every ${n} weeks`;
   if (kind === 'monthly') return { 1: 'every month', 3: 'every quarter', 12: 'every year' }[n] ?? `every ${n} months`;
   return n === 1 ? '1 day after done' : `${n} days after done`;
-}
-
-const DAY_MS = 86400000;
-const toDate = (iso) => new Date(`${iso}T00:00:00Z`);
-const toIso = (d) => d.toISOString().slice(0, 10);
-
-export function addDays(iso, n) {
-  return toIso(new Date(toDate(iso).getTime() + n * DAY_MS));
-}
-
-// Same day of the month, n months on; a day that month doesn't have becomes its last
-// day (31 Jan + 1 month = 28 or 29 Feb).
-export function addMonths(iso, n) {
-  const [y, m, d] = iso.split('-').map(Number);
-  const first = new Date(Date.UTC(y, m - 1 + n, 1));
-  const lastDay = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
-  first.setUTCDate(Math.min(d, lastDay));
-  return toIso(first);
 }
 
 // The next target date. `today` is the person's local date when they marked it done.
@@ -60,7 +44,7 @@ export function nextTargetDate(task, today) {
 // (none ticked) moved by however far the task moved. Subtasks without a date stay without.
 export function nextOccurrence(task, subtasks, today) {
   const target = nextTargetDate(task, today);
-  const shift = dayOffset(task.target_date || today, target);
+  const shift = daysBetween(task.target_date || today, target);
   return {
     title: task.title,
     description: task.description || '',

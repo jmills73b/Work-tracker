@@ -17,18 +17,19 @@ function db({ task = { id: 't1', status: 'todo', priority: 'medium', target_date
 const batchSql = (d) => d.calls.find((c) => c.method === 'batch').statements;
 
 describe('patchSubtask', () => {
-  it('ticking a subtask on a to-do task also starts the task and logs both lines', async () => {
+  it('ticking a step logs it and leaves the task status alone', async () => {
     const d = db();
     expect((await patchSubtask(patch({ done: true }), { DB: d }, USER, 't1', 's1')).status).toBe(200);
     const stmts = batchSql(d);
     expect(stmts[0].sql).toMatch(/^UPDATE subtasks SET done = \?, completed_at = \?/);
     expect(stmts[0].params.slice(0, 1)).toEqual([1]);
     const notes = stmts.filter((s) => s.sql.includes('INSERT INTO task_updates')).map((s) => s.params[4]);
-    expect(notes).toEqual(['Completed: Draft', 'Status: To do → In progress']);
+    expect(notes).toEqual(['Completed: Draft']);
+    expect(stmts.some((s) => s.sql.startsWith('UPDATE tasks SET status'))).toBe(false);
   });
 
   it('un-ticking logs a reopen and leaves the task status alone', async () => {
-    const d = db({ task: { id: 't1', status: 'in_progress' }, subtask: { id: 's1', title: 'Draft', done: 1 } });
+    const d = db({ task: { id: 't1', status: 'todo' }, subtask: { id: 's1', title: 'Draft', done: 1 } });
     await patchSubtask(patch({ done: false }), { DB: d }, USER, 't1', 's1');
     const stmts = batchSql(d);
     expect(stmts[0].params.slice(0, 2)).toEqual([0, null]);

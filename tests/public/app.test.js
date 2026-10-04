@@ -1,94 +1,73 @@
 import { describe, expect, it, vi } from 'vitest';
-import { sliceFunctions } from '../helpers/slice.js';
-
-const dates = sliceFunctions('public/app.js', '  const dayNumber =', '  const rtf = new Intl', [
-  'daysUntil', 'dueInfo', 'isOverdue', 'isDueThisWeek', 'planWeek', 'isArchived', 'computeInsights',
-]);
-
-const sorting = sliceFunctions('public/app.js', '  const byDue =', '  const STATUS_FILTERS', ['SORTS'], {
-  prelude: "const PRIORITY_RANK = { urgent: 0, high: 1, medium: 2, low: 3 };",
-});
+import { addDays, addMonths, daysBetween, isDate, nextMonday, PRIORITY, STATUS } from '../../public/shared/rules.js';
+import { notify } from '../../public/app/api.js';
+import { daysUntil, dueInfo } from '../../public/app/dates.js';
+import { computeInsights, duplicateDraft, filterTasks, isOverdue, placeDrafts, planCandidates, planWeek } from '../../public/app/model.js';
+import { parseQuickAdd } from '../../public/app/parse.js';
 
 // Saturday 3 October 2026, local time.
 const TODAY = new Date(2026, 9, 3, 15, 30);
 const task = (over = {}) => ({ status: 'todo', target_date: null, priority: 'medium', ...over });
 
+describe('the shared rules', () => {
+  it('has three states and a High flag, keeping the stored codes', () => {
+    expect(STATUS).toEqual({ todo: 'Open', blocked: 'Waiting', done: 'Done' });
+    expect(PRIORITY).toEqual({ high: 'High', medium: 'Normal' });
+  });
+
+  it('accepts only real calendar dates', () => {
+    expect([isDate('2026-02-28'), isDate('2026-02-30'), isDate('2026-2-1'), isDate(null)]).toEqual([true, false, false, false]);
+  });
+
+  it('does date arithmetic in whole days, clamping month ends', () => {
+    expect(addDays('2026-10-30', 3)).toBe('2026-11-02');
+    expect(addMonths('2026-01-31', 1)).toBe('2026-02-28');
+    expect(daysBetween('2026-10-01', '2026-10-05')).toBe(4);
+    expect(daysBetween(null, '2026-10-05')).toBeNull();
+  });
+
+  it('gives next week as the coming Monday, even from a Monday or a Sunday', () => {
+    expect(nextMonday('2026-10-03')).toBe('2026-10-05'); // Sat
+    expect(nextMonday('2026-10-04')).toBe('2026-10-05'); // Sun
+    expect(nextMonday('2026-10-05')).toBe('2026-10-12'); // Mon
+  });
+});
+
 describe('daysUntil', () => {
   it('counts calendar days, ignoring the time of day', () => {
-    expect(dates.daysUntil('2026-10-04', new Date(2026, 9, 3, 23, 59))).toBe(1);
+    expect(daysUntil('2026-10-04', new Date(2026, 9, 3, 23, 59))).toBe(1);
   });
 
-  it('counts across a month boundary', () => {
-    expect(dates.daysUntil('2026-11-02', TODAY)).toBe(30);
-  });
-
-  it('goes negative once the date has passed', () => {
-    expect(dates.daysUntil('2026-10-01', TODAY)).toBe(-2);
+  it('counts across a month boundary, and goes negative once the date has passed', () => {
+    expect(daysUntil('2026-11-02', TODAY)).toBe(30);
+    expect(daysUntil('2026-10-01', TODAY)).toBe(-2);
   });
 });
 
 describe('dueInfo', () => {
   it('labels today, tomorrow and overdue in words', () => {
-    expect(dates.dueInfo(task({ target_date: '2026-10-03' }), TODAY)).toMatchObject({ label: 'Today', cls: 'soon' });
-    expect(dates.dueInfo(task({ target_date: '2026-10-04' }), TODAY)).toMatchObject({ label: 'Tomorrow', cls: 'soon' });
-    expect(dates.dueInfo(task({ target_date: '2026-09-30' }), TODAY)).toMatchObject({ label: '3d overdue', cls: 'overdue' });
+    expect(dueInfo(task({ target_date: '2026-10-03' }), TODAY)).toMatchObject({ label: 'Today', cls: 'soon' });
+    expect(dueInfo(task({ target_date: '2026-10-04' }), TODAY)).toMatchObject({ label: 'Tomorrow', cls: 'soon' });
+    expect(dueInfo(task({ target_date: '2026-09-30' }), TODAY)).toMatchObject({ label: '3d overdue', cls: 'overdue' });
   });
 
   it('never shows a finished task as overdue', () => {
-    expect(dates.dueInfo(task({ status: 'done', target_date: '2026-09-01' }), TODAY).cls).toBe('muted');
+    expect(dueInfo(task({ status: 'done', target_date: '2026-09-01' }), TODAY).cls).toBe('muted');
+    expect(isOverdue(task({ status: 'done', target_date: '2026-09-01' }), TODAY)).toBe(false);
   });
 
-  it('says "No date" when there is no target date', () => {
-    expect(dates.dueInfo(task(), TODAY)).toEqual({ label: 'No date', cls: 'muted' });
-  });
-});
-
-describe('isDueThisWeek / isOverdue', () => {
-  it('includes today and the seventh day, but not the eighth', () => {
-    expect(dates.isDueThisWeek(task({ target_date: '2026-10-03' }), TODAY)).toBe(true);
-    expect(dates.isDueThisWeek(task({ target_date: '2026-10-10' }), TODAY)).toBe(true);
-    expect(dates.isDueThisWeek(task({ target_date: '2026-10-11' }), TODAY)).toBe(false);
-  });
-
-  it('does not count an overdue task as due this week', () => {
-    expect(dates.isDueThisWeek(task({ target_date: '2026-10-02' }), TODAY)).toBe(false);
-    expect(dates.isOverdue(task({ target_date: '2026-10-02' }), TODAY)).toBe(true);
-  });
-
-  it('returns a real boolean for a task with no date, so tile counts stay numeric', () => {
-    expect(dates.isOverdue(task(), TODAY)).toBe(false);
-    expect(dates.isDueThisWeek(task(), TODAY)).toBe(false);
-  });
-});
-
-describe('sorting', () => {
-  const tasks = [
-    { id: 'none-low', target_date: null, priority: 'low' },
-    { id: 'oct10-low', target_date: '2026-10-10', priority: 'low' },
-    { id: 'oct10-urgent', target_date: '2026-10-10', priority: 'urgent' },
-    { id: 'oct05-medium', target_date: '2026-10-05', priority: 'medium' },
-    { id: 'none-urgent', target_date: null, priority: 'urgent' },
-  ];
-
-  it('orders by target date, puts undated tasks last, and breaks ties by priority', () => {
-    expect([...tasks].sort(sorting.SORTS.due).map((t) => t.id))
-      .toEqual(['oct05-medium', 'oct10-urgent', 'oct10-low', 'none-urgent', 'none-low']);
-  });
-
-  it('orders by priority first, then by target date', () => {
-    expect([...tasks].sort(sorting.SORTS.priority).map((t) => t.id))
-      .toEqual(['oct10-urgent', 'none-urgent', 'oct05-medium', 'oct10-low', 'none-low']);
+  it('says "No date" when there is no due date', () => {
+    expect(dueInfo(task(), TODAY)).toEqual({ label: 'No date', cls: 'muted' });
+    expect(isOverdue(task(), TODAY)).toBe(false);
   });
 });
 
 describe('notify', () => {
-  const load = (toast) => sliceFunctions('public/app.js', '  function notify(err) {', '  /* ---------- Dates', ['notify'], { inject: { toast } });
-
   it('shows an error toast exactly once', () => {
     // A find-and-replace once made notify() call itself: every error froze the page with
     // a stack overflow instead of showing a message. No other test exercised an error.
     const toast = vi.fn();
-    load(toast).notify(new Error('Save failed'));
+    notify(new Error('Save failed'), toast);
     expect(toast.mock.calls).toEqual([['Save failed', 'error']]);
   });
 
@@ -96,37 +75,136 @@ describe('notify', () => {
     const toast = vi.fn();
     const err = new Error('Signed out');
     err.silent = true;
-    load(toast).notify(err);
+    notify(err, toast);
     expect(toast).not.toHaveBeenCalled();
   });
 });
 
-describe('templates on the page', () => {
-  const tpl = sliceFunctions('public/app.js', '  // The date `days` after an ISO date', '  /* end templates helpers */', ['shiftDate', 'placeDrafts']);
+describe('planWeek (the Today view)', () => {
+  const ids = (items) => items.map((i) => (i.kind === 'task' ? i.task.id : `${i.task.id}/${i.step.id}`));
 
-  it('shifts a date by whole days, backwards across a month start', () => {
-    expect(tpl.shiftDate('2026-11-02', -3)).toBe('2026-10-30');
-  });
-
-  it('keeps an offset of zero as the task date itself', () => {
-    expect(tpl.shiftDate('2026-11-02', 0)).toBe('2026-11-02');
-  });
-
-  it('places template subtasks against the task date and leaves hand-dated ones alone', () => {
-    const drafts = [
-      { title: 'Draft', offset_days: -7, target_date: null },
-      { title: 'Hand-picked', offset_days: null, target_date: '2026-12-01' },
+  it('puts open tasks and open steps into overdue, today and the next 7 days', () => {
+    const tasks = [
+      task({ id: 'late', target_date: '2026-10-01' }),
+      task({ id: 'now', target_date: '2026-10-03' }),
+      task({ id: 'soon', target_date: '2026-10-10' }),
+      task({ id: 'later', target_date: '2026-10-11' }),
+      task({ id: 'undated' }),
+      task({ id: 'big', target_date: '2026-12-01', subtasks: [
+        { id: 's1', done: 0, target_date: '2026-10-03' },
+        { id: 's2', done: 1, target_date: '2026-10-03' },
+        { id: 's3', done: 0, target_date: null },
+        { id: 's4', done: 0, target_date: '2026-09-30' },
+      ] }),
     ];
-    expect(tpl.placeDrafts(drafts, '2026-11-20').map((d) => d.target_date)).toEqual(['2026-11-13', '2026-12-01']);
+    const g = planWeek(tasks, TODAY);
+    expect(ids(g.overdue)).toEqual(['big/s4', 'late']);
+    expect(ids(g.today)).toEqual(['now', 'big/s1']);
+    expect(ids(g.week)).toEqual(['soon']);
   });
 
-  it('clears template dates again when the task date is cleared', () => {
-    expect(tpl.placeDrafts([{ title: 'Draft', offset_days: -7, target_date: '2026-11-13' }], null)[0].target_date).toBeNull();
+  it('leads with the plan, carrying over an unfinished one from an earlier day, and shows each task once', () => {
+    const tasks = [
+      task({ id: 'planned', planned_on: '2026-10-03', target_date: '2026-10-03' }),
+      task({ id: 'carried', planned_on: '2026-10-01' }),
+      task({ id: 'future', planned_on: '2026-10-05', target_date: '2026-10-04' }),
+    ];
+    const g = planWeek(tasks, TODAY);
+    expect(ids(g.plan)).toEqual(['planned', 'carried']);
+    expect(ids(g.today)).toEqual([]);
+    expect(ids(g.week)).toEqual(['future']);
+  });
+
+  it('lists Waiting tasks to chase once their chase date comes, and by due date until then', () => {
+    const tasks = [
+      task({ id: 'chase', status: 'blocked', waiting_until: '2026-10-03', target_date: '2026-10-01' }),
+      task({ id: 'later', status: 'blocked', waiting_until: '2026-10-06', target_date: '2026-10-04' }),
+    ];
+    const g = planWeek(tasks, TODAY);
+    expect(ids(g.chase)).toEqual(['chase']);
+    expect(ids(g.overdue)).toEqual([]);
+    expect(ids(g.week)).toEqual(['later']);
+  });
+
+  it('leaves out done tasks and every step of a done task', () => {
+    const g = planWeek([task({ id: 'd', status: 'done', planned_on: '2026-10-03', target_date: '2026-10-03', subtasks: [{ id: 's', done: 0, target_date: '2026-10-03' }] })], TODAY);
+    expect(Object.values(g).flat()).toEqual([]);
+  });
+
+  it('orders the same day High first, then the task before its steps', () => {
+    const tasks = [
+      task({ id: 'normal', target_date: '2026-10-03' }),
+      task({ id: 'parent', target_date: '2026-10-05', subtasks: [{ id: 's', done: 0, target_date: '2026-10-03' }] }),
+      task({ id: 'high', priority: 'high', target_date: '2026-10-03' }),
+    ];
+    expect(ids(planWeek(tasks, TODAY).today)).toEqual(['high', 'normal', 'parent/s']);
+  });
+});
+
+describe('planCandidates (the daily plan)', () => {
+  it('offers what is planned, due, to chase or High, planned ones first, and nothing done', () => {
+    const tasks = [
+      task({ id: 'due', target_date: '2026-10-04' }),
+      task({ id: 'planned', planned_on: '2026-10-04', target_date: '2026-10-20' }),
+      task({ id: 'chase', status: 'blocked', waiting_until: '2026-10-04' }),
+      task({ id: 'high-undated', priority: 'high' }),
+      task({ id: 'high-far', priority: 'high', target_date: '2026-12-01' }),
+      task({ id: 'later', target_date: '2026-10-20' }),
+      task({ id: 'done', status: 'done', target_date: '2026-10-04' }),
+    ];
+    expect(planCandidates(tasks, '2026-10-04').map((t) => t.id)).toEqual(['planned', 'due', 'high-undated', 'chase']);
+  });
+});
+
+describe('filterTasks (the Tasks view)', () => {
+  const tasks = [
+    task({ id: 'open-late', target_date: '2026-10-10' }),
+    task({ id: 'open-soon', target_date: '2026-10-05' }),
+    task({ id: 'open-high', priority: 'high', target_date: '2026-10-10' }),
+    task({ id: 'open-none' }),
+    task({ id: 'waiting', status: 'blocked', title: 'Supplier quote' }),
+    task({ id: 'done-old', status: 'done', completed_at: '2026-09-01T10:00:00Z' }),
+    task({ id: 'done-new', status: 'done', completed_at: '2026-10-02T10:00:00Z', title: 'Quote signed' }),
+  ].map((t) => ({ title: t.id, description: '', updated_at: '2026-10-01T00:00:00Z', ...t }));
+  const ids = (list) => list.map((t) => t.id);
+
+  it('shows one state, by due date with High first on a tie and undated last', () => {
+    expect(ids(filterTasks(tasks, { status: 'todo' }))).toEqual(['open-soon', 'open-high', 'open-late', 'open-none']);
+    expect(ids(filterTasks(tasks, { status: 'todo', highOnly: true }))).toEqual(['open-high']);
+  });
+
+  it('lists Done newest first', () => {
+    expect(ids(filterTasks(tasks, { status: 'done' }))).toEqual(['done-new', 'done-old']);
+  });
+
+  it('searches every task whatever the chip, with done ones last', () => {
+    expect(ids(filterTasks(tasks, { status: 'todo', q: 'quote' }))).toEqual(['waiting', 'done-new']);
+  });
+
+  it('narrows by team', () => {
+    expect(ids(filterTasks(tasks, { status: 'blocked', inTeam: () => false }))).toEqual([]);
+  });
+});
+
+describe('duplicateDraft', () => {
+  it('copies the words, flag, team and repeat, with steps unticked and their dates kept relative to the due date', () => {
+    const d = duplicateDraft(
+      { title: 'Payroll', description: 'Run it', priority: 'high', team_id: 2, recurrence: 'monthly:1', target_date: '2026-10-28' },
+      [{ title: 'Check hours', done: 1, target_date: '2026-10-25' }, { title: 'Submit', done: 0, target_date: null }],
+    );
+    expect(d).toMatchObject({ title: 'Payroll', description: 'Run it', priority: 'high', team_id: 2, recurrence: 'monthly:1' });
+    expect(d.steps.map((s) => [s.title, s.done, s.offset_days])).toEqual([['Check hours', 0, -3], ['Submit', 0, null]]);
+    expect(placeDrafts(d.steps, '2026-11-28').map((s) => s.target_date)).toEqual(['2026-11-25', null]);
+    expect(placeDrafts(d.steps, null)[0].target_date).toBeNull();
+  });
+
+  it('keeps step dates as they are when the task has no due date', () => {
+    const d = duplicateDraft({ title: 'x', priority: 'medium' }, [{ title: 'a', done: 0, target_date: '2026-10-09' }]);
+    expect(d.steps[0]).toMatchObject({ offset_days: null, target_date: '2026-10-09' });
   });
 });
 
 describe('parseQuickAdd', () => {
-  const { parseQuickAdd } = sliceFunctions('public/app.js', '  const QA_WEEKDAYS', '  /* end quick add parser */', ['parseQuickAdd']);
   // Saturday 3 October 2026; and Monday 5 October for the "next" rules.
   const SAT = new Date(2026, 9, 3, 15);
   const MON = new Date(2026, 9, 5, 9);
@@ -188,7 +266,7 @@ describe('parseQuickAdd', () => {
   });
 
   it('uses the first date and priority it finds and leaves later ones in the title', () => {
-    expect(parseQuickAdd('Move fri to mon !low !high', SAT)).toMatchObject({ title: 'Move to mon !high', target_date: '2026-10-09', priority: 'low' });
+    expect(parseQuickAdd('Move fri to mon !low !high', SAT)).toMatchObject({ title: 'Move to mon !high', target_date: '2026-10-09', priority: 'medium' });
   });
 
   it('gives an empty title for a line that is only tokens, so nothing is saved', () => {
@@ -198,52 +276,10 @@ describe('parseQuickAdd', () => {
   it('ignores #words when there are no teams at all', () => {
     expect(parseQuickAdd('Plan #RDH', SAT)).toMatchObject({ title: 'Plan #RDH', team_id: null });
   });
-});
 
-describe('planWeek (the Today view)', () => {
-  const ids = (items) => items.map((i) => (i.kind === 'task' ? i.task.id : `${i.task.id}/${i.subtask.id}`));
-
-  it('puts open tasks and open subtasks into overdue, today and the next 7 days', () => {
-    const tasks = [
-      task({ id: 'late', target_date: '2026-10-01' }),
-      task({ id: 'now', target_date: '2026-10-03' }),
-      task({ id: 'soon', target_date: '2026-10-10' }),
-      task({ id: 'later', target_date: '2026-10-11' }),
-      task({ id: 'undated' }),
-      task({ id: 'big', target_date: '2026-12-01', subtasks: [
-        { id: 's1', done: 0, target_date: '2026-10-03' },
-        { id: 's2', done: 1, target_date: '2026-10-03' },
-        { id: 's3', done: 0, target_date: null },
-        { id: 's4', done: 0, target_date: '2026-09-30' },
-      ] }),
-    ];
-    const g = dates.planWeek(tasks, TODAY);
-    expect(ids(g.overdue)).toEqual(['big/s4', 'late']);
-    expect(ids(g.today)).toEqual(['now', 'big/s1']);
-    expect(ids(g.week)).toEqual(['soon']);
-  });
-
-  it('leaves out done tasks and every subtask of a done task', () => {
-    const g = dates.planWeek([task({ id: 'd', status: 'done', target_date: '2026-10-03', subtasks: [{ id: 's', done: 0, target_date: '2026-10-03' }] })], TODAY);
-    expect([...g.overdue, ...g.today, ...g.week]).toEqual([]);
-  });
-
-  it('orders the same day by priority, then the task before its subtasks', () => {
-    const tasks = [
-      task({ id: 'low', priority: 'low', target_date: '2026-10-03' }),
-      task({ id: 'urgent', priority: 'urgent', target_date: '2026-10-05', subtasks: [{ id: 's', done: 0, target_date: '2026-10-03' }] }),
-      task({ id: 'high', priority: 'high', target_date: '2026-10-03' }),
-    ];
-    expect(ids(dates.planWeek(tasks, TODAY).today)).toEqual(['urgent/s', 'high', 'low']);
-  });
-});
-
-describe('isArchived', () => {
-  const at = (y, m, d) => new Date(y, m - 1, d, 12).toISOString();
-  it('is a done task finished 30 or more calendar days ago', () => {
-    expect(dates.isArchived(task({ status: 'done', completed_at: at(2026, 9, 3) }), TODAY)).toBe(true);
-    expect(dates.isArchived(task({ status: 'done', completed_at: at(2026, 9, 4) }), TODAY)).toBe(false);
-    expect(dates.isArchived(task({ status: 'todo', completed_at: at(2026, 1, 1) }), TODAY)).toBe(false);
+  it('reads the old priority marks onto the High flag', () => {
+    for (const mark of ['!high', '!urgent', '!!', '!!!']) expect(parseQuickAdd(`x ${mark}`, SAT).priority).toBe('high');
+    for (const mark of ['!low', '!normal', '!med']) expect(parseQuickAdd(`x ${mark}`, SAT).priority).toBe('medium');
   });
 });
 
@@ -252,7 +288,7 @@ describe('computeInsights', () => {
   const doneOn = (y, m, d, over = {}) => task({ status: 'done', completed_at: new Date(y, m - 1, d, 15).toISOString(), ...over });
 
   it('counts done per Monday-start week, oldest first, for the last 12 weeks', () => {
-    const ins = dates.computeInsights([doneOn(2026, 9, 28), doneOn(2026, 10, 3), doneOn(2026, 9, 27), doneOn(2026, 7, 1)], TODAY);
+    const ins = computeInsights([doneOn(2026, 9, 28), doneOn(2026, 10, 3), doneOn(2026, 9, 27), doneOn(2026, 7, 1)], TODAY);
     expect(ins.weeks).toHaveLength(12);
     expect(ins.weeks.at(-1)).toEqual({ start: '2026-09-28', count: 2 });
     expect(ins.weeks.at(-2)).toEqual({ start: '2026-09-21', count: 1 });
@@ -261,7 +297,7 @@ describe('computeInsights', () => {
   });
 
   it('works out on-time rate and average slip from dated tasks done in the last 90 days', () => {
-    const ins = dates.computeInsights([
+    const ins = computeInsights([
       doneOn(2026, 10, 1, { target_date: '2026-10-01' }), // on the day: on time
       doneOn(2026, 9, 20, { target_date: '2026-09-25' }), // early
       doneOn(2026, 9, 30, { target_date: '2026-09-26' }), // 4 days late
@@ -276,12 +312,16 @@ describe('computeInsights', () => {
   });
 
   it('gives nulls rather than 0% when there is nothing to measure', () => {
-    const ins = dates.computeInsights([task({ target_date: '2026-09-01' })], TODAY);
+    const ins = computeInsights([task({ target_date: '2026-09-01' })], TODAY);
     expect([ins.onTimeRate, ins.avgSlip, ins.overdue]).toEqual([null, null, 1]);
   });
 
+  it('counts tasks waiting on someone else', () => {
+    expect(computeInsights([task({ status: 'blocked' }), task()], TODAY).waiting).toBe(1);
+  });
+
   it('breaks down open, overdue, done and on time by team, busiest first', () => {
-    const ins = dates.computeInsights([
+    const ins = computeInsights([
       task({ team_name: 'RDH', target_date: '2026-09-01' }),
       task({ team_name: 'RDH' }),
       task({ team_name: null }),

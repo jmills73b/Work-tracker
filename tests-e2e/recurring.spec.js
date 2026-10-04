@@ -2,8 +2,8 @@ import { expect, test } from '@playwright/test';
 import { signIn } from './helpers.js';
 
 // A repeating task, marked done, comes back as a fresh task with the next date and its
-// subtasks unticked and moved on; reopening and finishing again doesn't make a second.
-test('a weekly task marked done comes back next week with its subtasks, once', async ({ page }) => {
+// steps unticked and moved on; reopening and finishing again doesn't make a second.
+test('a weekly task marked done comes back next week with its steps, once', async ({ page }) => {
   await signIn(page);
   await page.locator('#new-task').click();
   await page.locator('#quick-details').click();
@@ -11,18 +11,17 @@ test('a weekly task marked done comes back next week with its subtasks, once', a
   await drawer.locator('[name=title]').fill('Weekly RDH check-in');
   await drawer.locator('[name=target_date]').fill('2031-03-03');
   await drawer.locator('[name=recurrence]').selectOption('weekly:1');
-  await drawer.locator('#subtask-input').fill('Prepare notes');
-  await drawer.locator('#subtask-input').press('Enter');
+  await drawer.locator('#step-input').fill('Prepare notes');
+  await drawer.locator('#step-input').press('Enter');
   await drawer.getByRole('button', { name: 'Create task' }).click();
-  await expect(drawer.getByRole('button', { name: 'Save changes' })).toBeVisible();
-  // The timeline records the repeat on later changes; the row shows the ↻ marker.
+  await expect(drawer.locator('#log-section')).toBeVisible();
   await page.keyboard.press('Escape');
   const row = page.locator('.row', { hasText: 'Weekly RDH check-in' });
-  await expect(row.locator('.repeat-mark')).toHaveAttribute('title', 'Repeats every week');
+  await expect(row.locator('.repeat-mark')).toHaveAttribute('title', 'Repeats: Every week');
 
   await row.getByRole('button', { name: 'Mark "Weekly RDH check-in" as done' }).click();
   await expect(page.locator('.toast', { hasText: 'Next one is due' })).toBeVisible();
-  await expect(page.locator('.row', { hasText: 'Weekly RDH check-in' })).toHaveCount(1); // the done one is filtered out of Active
+  await expect(page.locator('.row', { hasText: 'Weekly RDH check-in' })).toHaveCount(1); // the done one is under Done
 
   await page.locator('.row', { hasText: 'Weekly RDH check-in' }).click();
   await expect(drawer.locator('[name=target_date]')).toHaveValue('2031-03-10');
@@ -32,15 +31,17 @@ test('a weekly task marked done comes back next week with its subtasks, once', a
   await page.keyboard.press('Escape');
 
   // Reopen the done one and finish it again: still only one next occurrence.
-  await page.locator('#status-filter button[data-status="all"]').click();
-  const done = page.locator('.row.is-done', { hasText: 'Weekly RDH check-in' });
-  await done.getByRole('button', { name: 'as not done' }).click();
+  await page.locator('#status-filter button[data-status="done"]').click();
+  await page.locator('.row.is-done', { hasText: 'Weekly RDH check-in' }).getByRole('button', { name: 'as not done' }).click();
   await expect(page.locator('.row.is-done', { hasText: 'Weekly RDH check-in' })).toHaveCount(0);
+  await page.locator('#status-filter button[data-status="todo"]').click();
+  await expect(page.locator('.row', { hasText: 'Weekly RDH check-in' })).toHaveCount(2);
   await page.locator('.row', { hasText: 'Weekly RDH check-in' }).filter({ has: page.locator('.due', { hasText: /Mar 3/ }) })
     .getByRole('button', { name: 'as done' }).click();
   await page.reload();
-  await page.locator('#status-filter button[data-status="all"]').click();
-  await expect(page.locator('.row', { hasText: 'Weekly RDH check-in' })).toHaveCount(2);
+  await expect(page.locator('.row', { hasText: 'Weekly RDH check-in' })).toHaveCount(1);
+  await page.locator('#status-filter button[data-status="done"]').click();
+  await expect(page.locator('.row', { hasText: 'Weekly RDH check-in' })).toHaveCount(1);
 });
 
 test('"days after done" counts from the day it is finished', async ({ page }) => {
@@ -53,10 +54,11 @@ test('"days after done" counts from the day it is finished', async ({ page }) =>
   await expect(drawer.locator('[name=repeat_days]')).toBeVisible();
   await drawer.locator('[name=repeat_days]').fill('3');
   await drawer.getByRole('button', { name: 'Create task' }).click();
-  await expect(drawer.getByRole('button', { name: 'Save changes' })).toBeVisible();
+  await expect(drawer.locator('#log-section')).toBeVisible();
   await page.keyboard.press('Escape');
 
   await page.locator('.row', { hasText: 'Water the office plants' }).getByRole('button', { name: 'as done' }).click();
+  await expect(page.locator('.toast', { hasText: 'Next one is due' })).toBeVisible();
   await page.locator('.row', { hasText: 'Water the office plants' }).click();
   const d = new Date();
   d.setDate(d.getDate() + 3);

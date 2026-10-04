@@ -6,10 +6,12 @@
 
 ```
 src/index.js          fetch() wrapper + route(): the request gate, in order
-src/http/             handlers: auth.js, tasks.js, admin.js, assist.js, push.js, teams.js, templates.js, respond.js
+src/http/             handlers: auth.js, tasks.js, admin.js, assist.js, push.js, teams.js, export.js, respond.js
 src/infra/            crypto.js, auth.js (sessions), usersRepo.js, tasksRepo.js, loginAttempts.js, assistClient.js, assistUsageRepo.js, …
 src/domain/           pure rules: passwordPolicy, registration, taskValidation, taskChanges, assist (prompt + checks), …
-public/               index.html + app.js (the app), login.html + login.js, app.css, icons
+public/               index.html, login.html + login.js, app.css, sw.js, passkeys.js, icons
+public/shared/rules.js  the rules both sides share: states, the High flag, date checks and date arithmetic
+public/app/           the page, as browser-native ES modules (no build step), loaded from main.js
 migrations/           D1 schema
 tests/                Vitest unit tests (pure; fake DB; no network; no clock)
 tests-e2e/            Playwright specs against a local Worker and a fresh local D1
@@ -24,39 +26,99 @@ tests-e2e/            Playwright specs against a local Worker and a fresh local 
 - **Passkeys (Face ID / Touch ID)** (`migrations/0011_passkeys.sql`, `src/http/passkeys.js`, `public/passkeys.js`): an addition to the spec, not a replacement; password sign-in is unchanged. Verification is `@simplewebauthn/server`; this code binds it to sessions, lockout and storage. The relying party is the site itself (RP ID = hostname, the only accepted origin = the site's origin, neither taken from the request body). Sign-in is usernameless (discoverable credentials, user verification required): `POST /api/auth/passkey/options` then `POST /api/auth/passkey/login`, both public and before the session lookup, both behind the CSRF check and the IP lockout; an unknown or failing passkey counts as a failed attempt; success creates the same session cookie as a password. Adding one (`POST /api/auth/passkeys/options` with the current password, under the same email lockout as changing it, then `POST /api/auth/passkeys`) needs the password so a borrowed session can't plant a lasting way in. Challenges are single-use (`DELETE … RETURNING`) and expire after 5 minutes; a registration challenge is bound to the user who asked. Stored: credential id, COSE public key, signature counter (the library rejects a counter that goes backwards), transports, a device name. The user handle is `mills-tasks-user-<id>`, not the email. Name menu → Face ID & passkeys lists, adds and removes them.
 - **Tasks are private:** every task query is scoped to the signed-in user's id.
 
-## Tasks and subtasks
+## The page (`public/app/`)
 
-- A task has a status, priority, target date, category and a timeline of notes and automatic change lines.
-- **Subtasks** (`migrations/0004_subtasks.sql`) are a checklist under a task, kept in the order they were added. They replace percentage progress. `tasks.progress` and `task_updates.progress` stay in the schema, because applied migrations are never edited, but nothing reads or writes them.
-- On a saved task, each subtask change saves immediately. While a task is being created they are drafts, sent with the create as `subtasks: [titles]`.
-- Ticking a subtask on a **To do** task moves it to **In progress**. A blocked or done task is left alone (`statusAfterSubtaskChange`). Ticking and un-ticking add "Completed: …" / "Reopened: …" lines to the timeline. Renaming doesn't.
-- Marking a task done does not tick its subtasks: they stay an honest record.
-- **Reminder times** (`migrations/0012_reminder_times.sql`): up to three a day (`digest_times`, default 07:30, 10:00 and 20:00; settings still on the old 07:45 default were moved to these, a chosen time was kept). Each cron run sends the latest time that passed less than three hours ago, once (`last_digest_slot` = 'YYYY-MM-DD HH:MM'); a missed earlier time isn't sent after a later one. From 17:00 a digest is an evening one: what's still due today plus everything due tomorrow, subtasks and low priority included. Every digest has the same tag, so it replaces the last on the device. The single-time description below is the original design; `digest_time` and `last_digest_date` remain in the schema, unused.
-- **Reminders** (`migrations/0007_reminders.sql`) are web push notifications. A Cron Trigger (`*/15 * * * *` in `wrangler.toml`) runs `runDigests` (`src/reminders.js`). It finds each user whose local digest time (default 07:45, in their own time zone) passed less than three hours ago and who has no digest yet today. It then sends what is overdue, what is due today (tasks and open subtasks) and, optionally, Urgent and High tasks due tomorrow (`collectDue`, `buildDigest`). A day with nothing due sends nothing but is still marked as handled. Messages are encrypted to RFC 8291 (aes128gcm) and signed with VAPID (RFC 8292) in `src/infra/webpush.js`, using Web Crypto only. Tests decrypt them with the reference `http_ece` library. The server only sends to Apple, Google, Mozilla and Microsoft push hosts (`isPushEndpoint`). A device the push service reports gone (404/410) is forgotten. The key pair is the secret `VAPID_PRIVATE_JWK`, created once by `scripts/ensure-vapid.mjs` in the deploy workflow and never rotated, because every subscription is tied to it. On iPhone and iPad, web push needs the app on the Home Screen (iOS 16.4 or later); the Reminders screen says so. `public/sw.js` shows the notification and opens the app when it is tapped; it is public so the browser can update it after a session ends.
-- **Teams** (`migrations/0008_teams.sql`) replace free-text categories. They are shared across the app and seeded with Dev Ops, RDH and GDS; admins add, rename and remove them under name menu → Teams. A task (or template) has one team or none (the default). The migration moved each existing category that named a team (case and spaces ignored) onto it; the old `category` columns stay, unused, so nothing was lost. Removing a team moves its tasks and templates to "No team" in one batch. The team filter (`state.team`: all / none / an id, remembered per device) narrows the list, the board and the summary tiles. New tasks start on the team being filtered to. Team changes are logged on the timeline by name.
-- **Quick add** (the + button and the `N` key) turns one line into a task with `parseQuickAdd` in `app.js`, a pure function that takes "today" as an argument. It picks out the first date (today, tomorrow, weekdays, next <weekday> = the one in next Monday-start week, next week, in N days/weeks/months, eow, eom, 12 Oct, Oct 12, 12/10 read as day/month), the first `!priority` (`!!!`/`!urgent`, `!!`/`!high`, `!med`, `!low`) and the first `#Team` (matched to a team's name ignoring case, spaces, `_` and `-`, so `#devops` finds Dev Ops; a `#word` naming no team stays in the title). Recognised words leave the title; anything it can't read stays in it. A live preview shows the reading before saving, and "Add details…" carries it into the full form.
-- **Templates** (`migrations/0006_templates.sql`) copy a task's title, description, priority, category and subtasks. Each subtask's date is kept as `offset_days` from the task's target date (`dayOffset`; null when either date is missing, 0 when the same day). Starting a new task from a template creates draft subtasks that follow the target date as it is set (`shiftDate` / `placeDrafts` in `app.js`). A date picked by hand stops following.
-- A subtask can have its own **target date** (`migrations/0005_subtask_dates.sql`). It shows as a chip coloured like task dates: red when overdue, amber when due within a week. In a PATCH, `target_date: null` (or `''`) clears the date; a missing key leaves it alone.
-- **Task assistant** (the ✨ button beside a task's title) suggests a clearer, more concise title and description. The page shows yours and the suggestion side by side, with a one-line reason; **Replace** puts the suggestion in the form (nothing is saved until Save) and **Keep original** changes nothing. Only changed fields are shown; a task that already reads clearly says so. `POST /api/assist` (`src/http/assist.js`) makes one call to Claude Haiku 4.5 (`claude-haiku-4-5`, the fast, cheap model; no extended thinking) through the official `@anthropic-ai/sdk`, with a structured-output JSON schema. The prompt is `SYSTEM_PROMPT` in `src/domain/assist.js`: lead with a verb, about 60 characters, keep acronyms and names exactly, drop filler and urgency words (priority holds urgency), keep every fact, keep uncertainty as uncertainty, never write a description that wasn't there, leave clear text alone, British English. The task text is escaped inside `<task>` tags and treated as data. `shapeSuggestion` falls back to the original for any empty, oversized or unreadable field, so a bad reply can only mean "no change". **Subtasks** have their own ✨ (on each open subtask row and beside "Add a subtask"): `POST /api/assist/subtask` sends that subtask with its task title and the other subtasks, under `SUBTASK_PROMPT`: lead with a verb, about 50 characters, use the task to make a vague step specific but only with words already in the task or subtask, one step stays one step, keep uncertainty, leave clear wording alone. The suggestion opens in place under the row with Keep / Use; Use renames the subtask (saved at once, like any rename) or fills the add box. Both prompts get the live team names in the message (`<teams>`), not a fixed list in the prompt. Suggesting missing steps was considered and deliberately left out. **Progress updates** have a ✨ Tidy beside Post update: `POST /api/assist/update` sends the rough note with the task title under `UPDATE_PROMPT` (one to three sentences or a short list, what changed first, keep every fact and any doubt, add no next steps, owners, dates, causes or feelings). Yours and the tidied version show side by side under the box; Replace puts it in the box and nothing posts until Post update. Each user gets 30 calls an hour (task and subtask calls together) (`assist_usage`, `migrations/0009_assist.sql`), counted before the call. The API key is the Worker secret `ANTHROPIC_API_KEY`, copied from the GitHub secret of the same name on every deploy; it never reaches the browser, and `GET /api/auth/me` only reports `assistant: true/false` so the page knows whether to show the button. Each suggestion costs roughly £0.001–0.002. Task text is sent to Anthropic only when ✨ is tapped.
-- **Recurring tasks** (`migrations/0010_recurrence.sql`, `src/domain/recurrence.js`): `recurrence` is null, `weekly:N` (1–4), `monthly:N` (1, 2, 3, 6, 12) or `after:N` (1–365 days after done). Marking one done (from the check, the form or a progress update) creates the next occurrence in the same batch: same title, description, priority, team and repeat, not done, its subtasks unticked and moved by as many days as the task moved. Weekly and monthly count from the original target date (always from it, so 31 Jan → 28 Feb → 31 Mar), skipping dates already past so a late finish doesn't come back overdue; `after:N` counts from the day it was done, in the person's time zone (their reminder setting, London by default). `next_task_id` on the done task means done → reopened → done makes only one. Both tasks get a timeline line. The response carries `next_task` so the page shows it at once; a ↻ marks repeating tasks.
-- **Archive:** a task done 30 or more calendar days ago (`isArchived`) leaves Today, the board and the Done chip; the List's **Archive** chip (and **All**) shows it. A search that finds nothing offers "Search all tasks". The board's Done column links to the archive with a count. All of this is on the page; the server still returns every task.
-- **Insights** (name menu) are worked out on the page from the loaded tasks by `computeInsights` (pure, takes "today"), within the team filter: done in the last 30 days; on-time rate over tasks done in the last 90 days that had a target date (done on or before it, local time); average days late for the late ones; overdue now; done per Monday-start week for 12 weeks (a single-colour column chart, value on the latest week, hover/focus tooltips, and a table view); and per team open, overdue, done (90 days) and on-time. Nothing to measure shows "–", never 0%.
-- **Today** is the home view (the default on a new device; the last view used is remembered). `planWeek` in `app.js` (pure, takes "today") puts open tasks, and open subtasks of open tasks, into Overdue, Today and Next 7 days by their own target dates, ordered by date, then priority, then the task before its subtasks. A subtask row shows its parent task, ticks off in place and opens the task when tapped. The team, priority and search filters apply; status chips and sort don't.
-- **Board cards list their subtasks** (up to six, then "+N more") and can be ticked there. `GET /api/tasks` returns each task with its `subtasks` attached, using two queries in total rather than one per task (`attachSubtasks`).
+Plain ES modules the browser loads directly; `index.html` loads `main.js` with `type="module"`.
+
+| Module | Holds |
+| --- | --- |
+| `main.js` | Wiring: binds the toolbar and keys, loads `/auth/me`, `/tasks` and `/teams`, opens the plan for `?plan=tomorrow` |
+| `state.js` | The page's state, per-device preferences, and `app`: late-bound hooks so modules call each other without import cycles |
+| `model.js` | Pure: what each view shows (`planWeek`, `planCandidates`, `filterTasks`, `duplicateDraft`, `computeInsights`). "Today" is an argument |
+| `views.js` | Today, Tasks and Review; rows; the one-tap reschedule sheet |
+| `panel.js` | The task panel: autosave, fields summary, steps, log, ⋯ menu |
+| `assist.js`, `plan.js`, `quickadd.js`, `settings.js` | ✨ Tidy; the daily plan; quick add; the name menu and its dialogs |
+| `parse.js`, `dates.js`, `api.js`, `dom.js` | Quick-add parser; date labels; fetch wrapper; DOM helpers |
+
+`public/shared/rules.js` is imported by both the page and the Worker (`../../public/shared/rules.js`; wrangler bundles it), so the states, the High flag and date rules have one definition.
+
+## Tasks and steps
+
+- **States** (`migrations/0013_simplify.sql`): Open, Waiting and Done. The stored codes keep the original CHECK constraints: `todo` is Open, `blocked` is Waiting, `done` is Done. The migration folded `in_progress` into `todo`. Labels come from `STATUS` in `rules.js`, and the log still reads an old `in_progress` line as Open.
+- **High flag**: `priority` is `high` or `medium` (Normal). The migration folded `urgent` into `high` and `low` into `medium`.
+- **Waiting** has an optional chase date, `waiting_until`. Choosing Waiting (in the panel or from a row) defaults it to two days out. Leaving Waiting clears it, and the log records "Chase on …". When the date comes, the task leads Today under **To chase** and appears in reminders.
+- **Daily plan**: `planned_on` is the day a task is planned for. The plan screen (`plan.js`) lists what's worth considering for a day (`planCandidates`: planned, due by then, to chase by then, or High and due within a week, planned first), each with a tick that saves at once. While the screen is open, the list keeps its order, so a tick never moves a row from under your finger. A planned task leads Today under **Today's plan** until it's done; an unfinished one carries over. From 17:00 the button plans tomorrow, and the evening reminder opens `/?plan=tomorrow`.
+- **Steps** (`subtasks` in the schema, `migrations/0004_subtasks.sql`) are a checklist under a task, kept in the order they were added. They replace percentage progress; `tasks.progress` and `task_updates.progress` stay in the schema, unused.
+  - On a saved task, each step change saves immediately. While a task is being created, steps are drafts sent with the create as `subtasks: [titles]`.
+  - Ticking a step logs "Completed: …" and leaves the task's state alone. Marking a task done doesn't tick its steps either: they stay an honest record.
+  - A step can have its own due date (`migrations/0005_subtask_dates.sql`), shown as a chip coloured like task dates. In a PATCH, `target_date: null` (or `''`) clears it; a missing key leaves it alone.
+- **Autosave**: the panel has no Save button for a saved task.
+  - Each field PATCHes on change.
+  - The title and notes save 800 ms after typing stops, and at once on blur or close.
+  - An empty title is put back.
+  - Only a new task has a Create button, and only a new task asks before discarding.
+- **Log** (`task_updates`): notes you post, plus automatic lines for changes to state, due date, High, team, repeat and steps. Posting a note never changes the task (`POST /api/tasks/:id/updates` ignores `status`).
+- **Today** is the home view (the last view used is remembered per device). `planWeek` (pure) puts each open task in one group: Today's plan if `planned_on` ≤ today; else To chase if Waiting with `waiting_until` ≤ today; else Overdue, Due today or Next 7 days by due date. "Next 7 days" means 1 to 7 days ahead, and it is the only definition of "this week" in the app. Open steps are listed under their own dates, so a step due today shows even when its task is due next month. Each heading carries its count; the old summary tiles are gone. Each row has a ⏱ button for one-tap reschedule: add to or remove from today's plan, due tomorrow, due next week (the coming Monday), Waiting with a chase in 2 days (or "No longer waiting"), or pick a date.
+- **Tasks** view: the Open / Waiting / Done chips, a High-only toggle and sort (due date or recently updated). Done lists newest first. A search looks through every task whatever the chip, done ones last. The team filter applies to every view.
+- **Review** (`computeInsights`, pure, within the team filter) shows:
+  - Done in the last 30 days.
+  - On-time rate over tasks done in the last 90 days that had a due date.
+  - Overdue now, and waiting now.
+  - Done per Monday-start week for 12 weeks: a chart with a table view.
+  - Per team: open, overdue, done (90 days) and on time.
+  Nothing to measure shows "–", never 0%.
+- **Duplicate** (⋯ menu) opens a new task pre-filled with the title, notes, High, team, repeat and steps (unticked). Each step's date is kept as an offset from the due date (`duplicateDraft`, `placeDrafts`), so the steps follow whatever due date the copy gets. Templates are retired; `templates` and `template_subtasks` stay in the schema, unused, so nothing saved was lost.
+- **Teams** (`migrations/0008_teams.sql`) are shared labels, seeded with Dev Ops, RDH and GDS. Any signed-in user can add, rename and remove them, from name menu → Teams or "New team…" in a task's team picker (`/api/teams`). Each team's count is the signed-in user's own tasks. Removing a team moves its tasks to "No team" in one batch, and that affects everyone's tasks. That is acceptable for a personal tracker with few accounts; revisit if it becomes shared. The old free-text `category` columns stay in the schema, unused.
+- **Quick add** (the + button and `N`) turns one line into a task with `parseQuickAdd` (`parse.js`, pure, takes "today"). It picks out:
+  - The first date: today, tomorrow, weekdays, next <weekday>, next week, in N days/weeks/months, eow, eom, 12 Oct, 12/10 read as day/month.
+  - The first `!high`. `!urgent`, `!!` and `!!!` also mean High; `!low`, `!med` and `!normal` mean Normal.
+  - The first `#Team`, matched ignoring case, spaces, `_` and `-`. A `#word` naming no team stays in the title.
+  A live preview shows how the line was read, and "Add details…" carries it into the full form.
+- **Repeats** (`migrations/0010_recurrence.sql`, `src/domain/recurrence.js`): `recurrence` is null, `weekly:N` (1–4), `monthly:N` (1, 2, 3, 6, 12) or `after:N` (1–365 days after done). Marking one done creates the next occurrence in the same batch: the same task with its steps unticked and moved by as many days as the task moved.
+  - Weekly and monthly count from the original due date and skip dates already past. `after:N` counts from the day it was done, in the person's time zone.
+  - `next_task_id` on the done task means done → reopened → done makes only one.
+- **Export** (`GET /api/export?format=json|csv`, `src/http/export.js`): everything the signed-in user owns, as a download.
+  - **JSON**: teams, plus tasks with their steps and full log.
+  - **CSV**: one row per task, in plain words. Every field is quoted, and a leading `= + - @` gets a `'` so a spreadsheet never runs it as a formula.
+- **✨ Tidy**:
+  - **On a task** (the button beside the title): `POST /api/assist` sends the title, notes and open steps together. `SYSTEM_PROMPT` in `src/domain/assist.js` sets the rules:
+    - Lead with a verb; titles about 60 characters, steps about 50.
+    - Keep acronyms and names exactly.
+    - Drop filler and urgency words; the High flag holds urgency.
+    - Keep every fact, and keep uncertainty as uncertainty.
+    - Never write notes that weren't there.
+    - Make a vague step specific only with words already in the task.
+    - Exactly one step out for each step in, never added, merged or reordered.
+    - Leave clear text alone. British English.
+  - `shapeSuggestion` falls back to the original for any empty, oversized or unreadable field, and keeps every step if the count differs. A bad reply can only mean "no change".
+  - The sheet shows yours and the suggestion side by side, with a tick per changed step. **Replace** fills the title and notes (which then autosave) and renames the ticked steps.
+  - **On a log entry**: `POST /api/assist/update` tidies the rough note (`UPDATE_PROMPT`). The tidied version shows beside yours under the box, and nothing posts until Post.
+  - Per-step ✨ buttons are gone, folded into the task-level Tidy. Suggesting missing steps was considered and deliberately left out.
+  - The calls go to Claude Haiku 4.5 (`claude-haiku-4-5`) through `@anthropic-ai/sdk`, with a JSON-schema structured output. The task text is escaped inside `<task>` tags and treated as data, and the live team names go in the message.
+  - Each user gets 30 calls an hour (`assist_usage`).
+  - The key is the Worker secret `ANTHROPIC_API_KEY`, copied from the GitHub secret of the same name on every deploy. It never reaches the browser; `GET /api/auth/me` only reports `assistant: true/false`.
+- **Reminders** are web push notifications (`migrations/0007_reminders.sql`, `0012_reminder_times.sql`). A Cron Trigger (`*/15 * * * *`) runs `runDigests` (`src/reminders.js`).
+  - **Times**: up to three a day (`digest_times`, default 07:30, 10:00 and 20:00). Each run sends the latest time that passed less than three hours ago, once (`last_digest_slot`).
+  - **Daytime digests**: what's overdue, due today (tasks and open steps), to chase, and High tasks due tomorrow (`collectDue`, `buildDigest`).
+  - **From 17:00** a digest is an evening one: what's still due today plus everything due tomorrow. Tapping it opens `/?plan=tomorrow`.
+  - A digest with nothing in it isn't sent. Every digest has the same tag, so it replaces the last one on the device.
+  - The only setting is the times. The master switch and the "High tomorrow" switch are gone; 0013 set them on for everyone. Reminders are on or off per device.
+  - **Delivery**: messages are encrypted to RFC 8291 (aes128gcm) and signed with VAPID (RFC 8292) in `src/infra/webpush.js`, using Web Crypto only. The server only sends to Apple, Google, Mozilla and Microsoft push hosts, and forgets a device the push service reports gone.
+  - **Keys**: the key pair is the secret `VAPID_PRIVATE_JWK`, created once by `scripts/ensure-vapid.mjs`.
+  - **iPhone and iPad**: web push needs the app on the Home Screen. `public/sw.js` shows the notification and opens the link when it is tapped.
 
 | Route | Purpose |
 | --- | --- |
-| `GET /api/push/config`, `PUT /api/push/settings`, `POST/DELETE /api/push/subscriptions`, `POST /api/push/test` | Reminders: public key, settings and device count; settings; add/remove this device; send a test |
-| `POST /api/assist/update` | `{ task_title, note }` → `{ text, reason, changed }`; same limits and errors |
-| `POST /api/assist/subtask` | `{ task_title, title, others }` → `{ title, reason, changed }`; same limits and errors |
-| `POST /api/assist` | `{ title, description }` → `{ title, description, reason, changed: { title, description } }`; 429 over 30 an hour, 503 when not set up or Claude is busy, 502 for an unusable reply |
-| `GET /api/teams`; admin: `POST /api/admin/teams`, `PATCH/DELETE /api/admin/teams/:id` | Team list for everyone; add, rename, remove (admins only) |
-| `GET/POST /api/templates`, `DELETE /api/templates/:id` | List; save a task as a template (`{ task_id, name }`); delete |
-| `GET/POST /api/tasks` | List (with `subtask_total`, `subtask_done`), create |
-| `GET/PATCH/DELETE /api/tasks/:id` | Detail is `{ task, updates, subtasks }` |
-| `POST /api/tasks/:id/updates`, `DELETE …/updates/:uid` | Notes, optionally with a status change |
-| `POST /api/tasks/:id/subtasks` | Add a subtask (`{ title, target_date? }`) |
+| `GET/POST /api/tasks` | List (each with `subtask_total`, `subtask_done`, `subtasks`), create |
+| `GET/PATCH/DELETE /api/tasks/:id` | Detail is `{ task, updates, subtasks }`; a PATCH that finishes a repeating task also returns `next_task` |
+| `POST /api/tasks/:id/updates`, `DELETE …/updates/:uid` | Log a note; delete one |
+| `POST /api/tasks/:id/subtasks` | Add a step (`{ title, target_date? }`) |
 | `PATCH/DELETE /api/tasks/:id/subtasks/:sid` | `{ title?, done?, target_date? }`. `done` must be a real boolean |
+| `GET/POST /api/teams`, `PATCH/DELETE /api/teams/:id` | Team labels: list, add, rename, remove (any signed-in user) |
+| `GET /api/export?format=json\|csv` | Download everything you own |
+| `POST /api/assist` | `{ title, description, steps[] }` → `{ title, description, steps, reason, changed: { title, description, steps[] } }`. Errors: 429 over 30 an hour; 503 when not set up or Claude is busy; 502 for an unusable reply |
+| `POST /api/assist/update` | `{ task_title, note }` → `{ text, reason, changed }`; same limits and errors |
+| `GET /api/push/config`, `PUT /api/push/settings`, `POST/DELETE /api/push/subscriptions`, `POST /api/push/test` | Reminders: public key, times and device count; times; add/remove this device; send a test |
 
 ### Endpoints
 
@@ -139,7 +201,7 @@ All pure: no database, no network, no clock. Anything that depends on "now" take
 - **Null is tested separately from zero.** `progress: null` means "leave alone" in an update and is refused on a task; `progress: 0` means zero.
 - **Assert the real list**, e.g. the sorted ids or the batch's statements, not a count.
 - **`tests/helpers/fakeDb.js`** matches a substring of the SQL and returns the declared answer. `bind()` returns a new statement each call, and `first()` returns `null` when nothing matches.
-- **Code in `public/`** is tested by slicing it out of the real file between two anchor strings (`tests/helpers/slice.js`) and evaluating it. The helper throws if an anchor moves, rather than yielding an empty test.
+- **Code in `public/`** is tested by importing the real modules (`public/app/model.js`, `parse.js`, `dates.js`, `api.js`, `public/shared/rules.js`). The view logic lives in pure functions there so it can be.
 
 ### Playwright (`npm run test:e2e`)
 
@@ -147,15 +209,23 @@ Runs against `wrangler dev --local` and a freshly wiped local D1. It never uses 
 
 `tests-e2e/helpers.js` signs in, or registers if sign-in fails. It waits on a real outcome (the redirect to `/`, or the error message appearing), never a fixed timeout, because sign-in is deliberately slow.
 
-Specs, kept few:
-- `critical-path.spec.js`: sign in, create a task with draft subtasks, tick one, post an update, complete, sign out, gate, wrong password, sign back in.
-- `assistant.spec.js`: no button without a key; at iPhone 12 mini size, yours and the suggestion side by side, Escape closes only the sheet, Keep changes nothing, Replace fills the form and saves; the "already clear" answer; a subtask's in-place suggestion sends its task and siblings, and Use renames it and survives reopening; Tidy on an update, side by side, Replace fills the box and only Post update posts. The two calls that need a key are stubbed in the browser; the Worker-side call is unit-tested with the real SDK against a fake API.
-- `subtasks.spec.js`: typing the next subtask while the last is still saving keeps what was typed (the add used to clear the box when the save returned).
-- `recurring.spec.js`: a weekly task done comes back a week on with its subtask unticked, only once across reopen and re-finish; "days after done" counts from today.
-- `archive-insights.spec.js`: with the browser clock moved 40 days on, a done task leaves Done for Archive, "Search all tasks" finds it, the board links to it, and Insights counts it.
-- `passkeys.spec.js`: a real WebAuthn ceremony against Chromium's virtual authenticator: a wrong password is refused, the right one adds a passkey, sign out, sign in with it and no password, remove it, and it no longer signs in.
-- `today.spec.js`: overdue / today / next 7 days with a subtask listed under its own date, ticking it off for real, opening a task. The other specs switch to List in `signIn`, because the app opens on Today.
-- `missing-data.spec.js`: the empty-account state, and a failed save showing its message (the bug class where `notify()` called itself and froze the page).
+Specs, kept few. `signIn` switches to the Tasks view, because the app opens on Today; pass `{ view: 'today' }` to stay.
+
+| Spec | Proves |
+| --- | --- |
+| `critical-path.spec.js` | Create a High task with draft steps; tick a step (logged, state unchanged); give it a date; edit fields and the title with no Save button; post to the log; complete; sign out; the page gate; a wrong password; sign back in |
+| `assistant.spec.js` | No button without a key. At iPhone 12 mini size: yours and the suggestion side by side; Escape closes only the sheet; Keep changes nothing; Replace fills and saves. The "already clear" answer. Tidy on steps: only open steps are sent, each change has a tick, only ticked ones are renamed, and they survive reopening; no ✨ on step rows. Tidy on a log entry. The calls that need a key are stubbed in the browser; the Worker side is unit-tested with the real SDK against a fake API |
+| `plan.spec.js` | One-tap reschedule on Today (due tomorrow, add to today's plan, Waiting with a chase date, pick a date). To chase. `/?plan=tomorrow` opens the plan, cleans the URL, and a tick saves `planned_on` |
+| `task-actions.spec.js` | Duplicate with steps; Waiting defaults a chase date and is logged; Delete from the ⋯ menu; export as CSV (a real download) and JSON |
+| `teams.spec.js` | Add from the menu (duplicate refused); add inline from a task's picker; the filter narrows Tasks and Review and is remembered |
+| `review.spec.js` | Done lists newest first; Review's tiles, chart, table and per-team breakdown |
+| `today.spec.js` | Overdue / today / next 7 days with a step under its own date; ticking it off for real; opening a task |
+| `recurring.spec.js` | A weekly task done comes back a week on, its step unticked, only once across reopen and re-finish; "days after done" counts from today |
+| `subtasks.spec.js` | Typing the next step while the last is still saving keeps what was typed |
+| `reminders.spec.js` | The times round trip (no switches left); the "not set up" state |
+| `quick-add.spec.js` | Preview and saved task agree |
+| `passkeys.spec.js` | A real WebAuthn ceremony against Chromium's virtual authenticator |
+| `missing-data.spec.js` | The empty-account state; a failed save showing its message |
 
 ### Verification outside the suite
 

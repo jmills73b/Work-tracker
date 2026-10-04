@@ -9,9 +9,9 @@ export const ACCOUNT = { name: 'E2E Tester', email: 'e2e@example.com', password:
 // It waits on a real outcome, never a timeout: sign-in is deliberately slow (100,000
 // PBKDF2 iterations), and treating that delay as "no account yet" would register twice.
 //
-// The app opens on Today; most specs were written against the List view, so signIn
-// switches to it (the choice is remembered on the device). Pass { view: 'today' } to stay.
-export async function signIn(page, { view = 'list' } = {}) {
+// The app opens on Today; most specs work in the Tasks view, so signIn switches to it
+// (the choice is remembered on the device). Pass { view: 'today' } to stay.
+export async function signIn(page, { view = 'tasks' } = {}) {
   await signInOnly(page);
   if (view !== 'today') await page.locator(`#view-toggle button[data-view="${view}"]`).click();
 }

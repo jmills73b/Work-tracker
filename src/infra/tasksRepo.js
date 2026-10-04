@@ -2,7 +2,7 @@ import { planTaskChanges } from '../domain/taskChanges.js';
 
 const TASK_COLUMNS = `
   t.id, t.title, t.description, t.status, t.priority, t.target_date,
-  t.team_id, (SELECT tm.name FROM teams tm WHERE tm.id = t.team_id) AS team_name, t.recurrence, t.next_task_id,
+  t.team_id, (SELECT tm.name FROM teams tm WHERE tm.id = t.team_id) AS team_name, t.recurrence, t.next_task_id, t.waiting_until, t.planned_on,
   t.created_at, t.updated_at, t.completed_at,
   (SELECT COUNT(*) FROM subtasks s WHERE s.task_id = t.id) AS subtask_total,
   (SELECT COUNT(*) FROM subtasks s WHERE s.task_id = t.id AND s.done = 1) AS subtask_done,
@@ -68,10 +68,10 @@ export async function createTask(env, userId, t, at) {
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO tasks (id, user_id, title, description, status, priority, target_date,
-                          team_id, recurrence, created_at, updated_at, completed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                          team_id, recurrence, waiting_until, planned_on, created_at, updated_at, completed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(id, userId, t.title, t.description, t.status, t.priority, t.target_date,
-      t.team_id, t.recurrence ?? null, at, at, t.status === 'done' ? at : null),
+      t.team_id, t.recurrence ?? null, t.waiting_until ?? null, t.planned_on ?? null, at, at, t.status === 'done' ? at : null),
     insertUpdate(env, { userId, taskId: id, kind: 'change', note: 'Task created', at }),
     ...(t.subtasks || []).map((st, position) => insertSubtask(env, { userId, taskId: id, ...st, position, at })),
   ]);
@@ -172,4 +172,31 @@ export async function deleteSubtask(env, userId, taskId, subtaskId) {
   const { meta } = await env.DB.prepare('DELETE FROM subtasks WHERE id = ? AND task_id = ? AND user_id = ?')
     .bind(subtaskId, taskId, userId).run();
   return meta.changes > 0;
+}
+
+// Every task of one user with its steps and whole log (oldest first): the export.
+export async function exportRows(env, userId) {
+  const [tasks, steps, log] = await Promise.all([
+    env.DB.prepare(`SELECT ${TASK_COLUMNS} FROM tasks t WHERE t.user_id = ? ORDER BY t.created_at`).bind(userId).all(),
+    env.DB.prepare(`SELECT ${SUBTASK_COLUMNS} FROM subtasks WHERE user_id = ? ORDER BY task_id, position, created_at`).bind(userId).all(),
+    env.DB.prepare(
+      `SELECT task_id, kind, note, created_at FROM task_updates WHERE user_id = ? AND NOT ${RETIRED_PROGRESS_LINE}
+       ORDER BY created_at, rowid`,
+    ).bind(userId).all(),
+  ]);
+  const group = (rows) => {
+    const by = new Map();
+    for (const { task_id: taskId, ...r } of rows) {
+      if (!by.has(taskId)) by.set(taskId, []);
+      by.get(taskId).push(r);
+    }
+    return by;
+  };
+  const stepsBy = group(steps.results);
+  const logBy = group(log.results);
+  return tasks.results.map(({ subtask_total: _a, subtask_done: _b, last_note: _c, last_note_at: _d, next_task_id: _e, ...t }) => ({
+    ...t,
+    steps: (stepsBy.get(t.id) ?? []).map(({ id: _id, position: _p, ...st }) => st),
+    log: logBy.get(t.id) ?? [],
+  }));
 }

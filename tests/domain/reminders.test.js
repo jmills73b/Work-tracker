@@ -71,14 +71,15 @@ describe('parseTimes', () => {
 describe('collectDue', () => {
   const TODAY = '2026-10-03';
   const tasks = [
-    { title: 'Contract', status: 'blocked', priority: 'urgent', target_date: '2026-10-01', subtasks: [
+    { title: 'Contract', status: 'blocked', priority: 'high', target_date: '2026-10-01', waiting_until: '2026-10-03', subtasks: [
       { title: 'Redline', done: 1, target_date: '2026-09-30' },
       { title: 'CFO sign', done: 0, target_date: '2026-10-03' },
     ] },
-    { title: 'Board deck', status: 'in_progress', priority: 'high', target_date: '2026-10-04', subtasks: [] },
-    { title: 'Offsite', status: 'todo', priority: 'low', target_date: '2026-10-04', subtasks: [] },
+    { title: 'Board deck', status: 'todo', priority: 'high', target_date: '2026-10-04', subtasks: [] },
+    { title: 'Offsite', status: 'todo', priority: 'medium', target_date: '2026-10-04', subtasks: [] },
     { title: 'Old report', status: 'done', priority: 'high', target_date: '2026-09-01', subtasks: [] },
-    { title: 'Undated', status: 'todo', priority: 'urgent', target_date: null, subtasks: [] },
+    { title: 'Undated', status: 'todo', priority: 'high', target_date: null, subtasks: [] },
+    { title: 'Supplier reply', status: 'blocked', priority: 'medium', target_date: null, waiting_until: '2026-10-05', subtasks: [] },
   ];
 
   it('collects overdue and due-today items from tasks and open subtasks, skipping done ones', () => {
@@ -87,7 +88,11 @@ describe('collectDue', () => {
     expect(due.dueToday.map((i) => i.title)).toEqual(['CFO sign (Contract)']);
   });
 
-  it('warns about tomorrow only for Urgent and High tasks', () => {
+  it('lists Waiting tasks whose chase date has come, and not ones still to come', () => {
+    expect(collectDue(tasks, TODAY).chase.map((i) => i.title)).toEqual(['Contract']);
+  });
+
+  it('warns about tomorrow only for High tasks', () => {
     expect(collectDue(tasks, TODAY).tomorrow.map((i) => i.title)).toEqual(['Board deck']);
   });
 
@@ -106,13 +111,24 @@ describe('buildDigest', () => {
       overdue: [{ title: 'Contract', daysLate: 2 }],
       dueToday: [{ title: 'CFO sign (Contract)' }],
       tomorrow: [{ title: 'Board deck' }],
+      chase: [{ title: 'Supplier reply' }],
     }, '2026-10-03');
     expect(d).toEqual({
-      title: '1 overdue · 1 due today · 1 priority task due tomorrow',
-      body: '• Contract, 2d overdue\n• CFO sign (Contract), today\n• Board deck, tomorrow',
+      title: '1 overdue · 1 due today · 1 High task due tomorrow · 1 to chase',
+      body: '• Contract, 2d overdue\n• CFO sign (Contract), today\n• Chase: Supplier reply\n• Board deck, tomorrow',
       tag: 'digest-2026-10-03',
       url: '/',
     });
+  });
+
+  it('in the evening, opens the plan for tomorrow when tapped', () => {
+    const d = buildDigest({ overdue: [], dueToday: [], tomorrow: [{ title: 'A' }, { title: 'B' }] }, '2026-10-03', { evening: true });
+    expect(d.title).toBe('2 due tomorrow');
+    expect(d.url).toBe('/?plan=tomorrow');
+  });
+
+  it('sends a digest for chasing alone', () => {
+    expect(buildDigest({ overdue: [], dueToday: [], tomorrow: [], chase: [{ title: 'X' }] }, '2026-10-03').title).toBe('1 to chase');
   });
 
   it('shows at most four lines and counts the rest', () => {

@@ -27,6 +27,6 @@ test('a failed save shows the server message and the page keeps working', async 
   page.once('dialog', (d) => d.accept());
   await page.keyboard.press('Escape');
   await expect(page.locator('#drawer')).toBeHidden();
-  await page.getByRole('button', { name: 'Board' }).click();
-  await expect(page.locator('.board')).toBeVisible();
+  await page.locator('#view-toggle button[data-view="review"]').click();
+  await expect(page.locator('.review')).toBeVisible();
 });

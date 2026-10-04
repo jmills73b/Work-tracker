@@ -3,7 +3,7 @@ import { signIn } from './helpers.js';
 
 // The preview and the saved task must agree: the parser runs in the page, the task is
 // saved by the API, and only a browser shows both.
-test('quick add turns one line into a dated, prioritised task on a team', async ({ page }) => {
+test('quick add turns one line into a dated, High task on a team', async ({ page }) => {
   await signIn(page);
   await page.keyboard.press('n');
   await page.locator('#quick-input').fill('Book flights tomorrow !high #rdh');

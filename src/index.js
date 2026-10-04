@@ -1,12 +1,12 @@
 import * as admin from './http/admin.js';
 import * as assist from './http/assist.js';
 import * as auth from './http/auth.js';
+import * as exporter from './http/export.js';
 import * as passkeys from './http/passkeys.js';
 import { json, redirect, text, withSecurityHeaders } from './http/respond.js';
 import * as push from './http/push.js';
 import * as tasks from './http/tasks.js';
 import * as teams from './http/teams.js';
-import * as templates from './http/templates.js';
 import { getSessionUser } from './infra/auth.js';
 import { runDigests } from './reminders.js';
 
@@ -88,16 +88,20 @@ async function api(request, env, user, method, path) {
   if (pk && pk[1] !== 'options' && method === 'DELETE') return passkeys.remove(env, user, pk[1]);
 
   if (path === '/api/assist' && method === 'POST') return assist.suggest(request, env, user);
-  if (path === '/api/assist/subtask' && method === 'POST') return assist.suggestSubtask(request, env, user);
   if (path === '/api/assist/update' && method === 'POST') return assist.suggestUpdate(request, env, user);
 
-  if (path === '/api/teams' && method === 'GET') return teams.get(env);
-  if (path === '/api/admin/teams' && method === 'POST') return teams.create(request, env);
-  const adminTeam = path.match(/^\/api\/admin\/teams\/([^/]+)$/);
-  if (adminTeam) {
-    if (method === 'PATCH') return teams.rename(request, env, adminTeam[1]);
-    if (method === 'DELETE') return teams.remove(env, adminTeam[1]);
+  // Teams are labels anyone signed in can add (straight from the task form), rename or remove.
+  if (path === '/api/teams') {
+    if (method === 'GET') return teams.get(env, user);
+    if (method === 'POST') return teams.create(request, env, user);
   }
+  const team = path.match(/^\/api\/teams\/([^/]+)$/);
+  if (team) {
+    if (method === 'PATCH') return teams.rename(request, env, user, team[1]);
+    if (method === 'DELETE') return teams.remove(env, user, team[1]);
+  }
+
+  if (path === '/api/export' && method === 'GET') return exporter.download(env, user, new URL(request.url).searchParams.get('format'));
 
   if (path === '/api/admin/invites') {
     if (method === 'GET') return admin.listInvites(env, user);
@@ -112,12 +116,6 @@ async function api(request, env, user, method, path) {
   }
   if (path === '/api/push/test' && method === 'POST') return push.test(env, user);
 
-  if (path === '/api/templates') {
-    if (method === 'GET') return templates.list(env, user);
-    if (method === 'POST') return templates.create(request, env, user);
-  }
-  const tpl = path.match(/^\/api\/templates\/([^/]+)$/);
-  if (tpl && method === 'DELETE') return templates.remove(env, user, tpl[1]);
 
   if (path === '/api/tasks') {
     if (method === 'GET') return tasks.list(env, user);

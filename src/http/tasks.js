@@ -1,6 +1,6 @@
+import { NORMAL, OPEN } from '../../public/shared/rules.js';
 import { nextOccurrence, shouldRecur } from '../domain/recurrence.js';
 import { localNow } from '../domain/reminders.js';
-import { statusAfterSubtaskChange } from '../domain/taskChanges.js';
 import { validateSubtaskCreate, validateSubtaskPatch, validateTask, validateUpdate } from '../domain/taskValidation.js';
 import * as tasksRepo from '../infra/tasksRepo.js';
 import { getSettings } from '../infra/remindersRepo.js';
@@ -19,7 +19,7 @@ export async function create(request, env, user) {
   const { value, error } = validateTask(await request.json());
   if (error) return bad(error);
   if (value.team_id != null && !(await findTeam(env, value.team_id))) return bad('Unknown team');
-  const t = { description: '', status: 'todo', priority: 'medium', target_date: null, team_id: null, subtasks: [], ...value };
+  const t = { description: '', status: OPEN, priority: NORMAL, target_date: null, team_id: null, subtasks: [], ...value };
   const id = await tasksRepo.createTask(env, user.id, t, now());
   return json(await tasksRepo.taskDetail(env, user.id, id), 201);
 }
@@ -68,21 +68,17 @@ export async function remove(env, user, id) {
   return (await tasksRepo.deleteTask(env, user.id, id)) ? json({ ok: true }) : notFound();
 }
 
-// A progress update can also move the task's status.
+// A log entry: words only.
 export async function postUpdate(request, env, user, id) {
   const { value, error } = validateUpdate(await request.json());
   if (error) return bad(error);
-  const existing = await tasksRepo.getTask(env, user.id, id);
-  if (!existing) return notFound();
-
+  if (!(await tasksRepo.getTask(env, user.id, id))) return notFound();
   const at = now();
-  const fields = value.status !== null ? { status: value.status } : {};
-  const stmts = tasksRepo.changeStatements(env, user.id, existing, fields, at);
-  if (!stmts.length) stmts.push(tasksRepo.touchTask(env, user.id, id, at));
-  stmts.push(tasksRepo.insertUpdate(env, { userId: user.id, taskId: id, kind: 'note', ...value, at }));
-  const next = await recurStatements(env, user, existing, fields, at);
-  await env.DB.batch([...stmts, ...next.statements]);
-  return detailWithNext(env, user, id, next.id, 201);
+  await env.DB.batch([
+    tasksRepo.touchTask(env, user.id, id, at),
+    tasksRepo.insertUpdate(env, { userId: user.id, taskId: id, kind: 'note', ...value, at }),
+  ]);
+  return json(await tasksRepo.taskDetail(env, user.id, id), 201);
 }
 
 export async function removeUpdate(env, user, id, updateId) {
@@ -123,9 +119,7 @@ export async function patchSubtask(request, env, user, id, subtaskId) {
       userId: user.id, taskId: id, kind: 'change', note: `${value.done ? 'Completed' : 'Reopened'}: ${title}`, at,
     }));
   }
-  const nextStatus = doneChanged ? statusAfterSubtaskChange(task, value.done) : null;
-  const statusStmts = nextStatus ? tasksRepo.changeStatements(env, user.id, task, { status: nextStatus }, at) : [];
-  stmts.push(...(statusStmts.length ? statusStmts : [tasksRepo.touchTask(env, user.id, id, at)]));
+  stmts.push(tasksRepo.touchTask(env, user.id, id, at));
   await env.DB.batch(stmts);
   return json(await tasksRepo.taskDetail(env, user.id, id));
 }

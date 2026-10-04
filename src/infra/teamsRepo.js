@@ -1,9 +1,10 @@
-// Teams are shared by everyone; task counts span all users (admins see them).
-export async function listTeams(env) {
+// Teams are one shared list of labels; each person sees only how many of their own
+// tasks carry each one.
+export async function listTeams(env, userId = null) {
   const { results } = await env.DB.prepare(
-    `SELECT tm.id, tm.name, (SELECT COUNT(*) FROM tasks t WHERE t.team_id = tm.id) AS task_count
+    `SELECT tm.id, tm.name, (SELECT COUNT(*) FROM tasks t WHERE t.team_id = tm.id AND t.user_id = ?) AS task_count
      FROM teams tm ORDER BY tm.position, tm.name COLLATE NOCASE`,
-  ).all();
+  ).bind(userId).all();
   return results;
 }
 
