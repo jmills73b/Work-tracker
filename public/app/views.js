@@ -6,7 +6,25 @@ import { $, h, icon, toast } from './dom.js';
 import { computeInsights, describeRepeat, filterTasks, planWeek, TODAY_GROUPS } from './model.js';
 import { app, inTeamFilter, state, store, upsert } from './state.js';
 
+// A row ticked off stays where it is, shown done, for a moment before the list redraws.
+// Redrawing at once slid the next row under the finger: on iPhone it then looked ticked
+// (hover sticks to whatever is under the last touch), and a second quick tap ticked it.
+const HOLD_MS = 700;
+let holdUntil = 0;
+let heldRender = null;
+
+function holdRow(row) {
+  row.classList.add('is-done', 'is-leaving');
+  holdUntil = Date.now() + HOLD_MS;
+}
+
 export function render() {
+  const wait = holdUntil - Date.now();
+  if (wait > 0) {
+    clearTimeout(heldRender);
+    heldRender = setTimeout(render, wait);
+    return;
+  }
   renderToolbar();
   const root = $('#tasks');
   root.replaceChildren();
@@ -73,6 +91,7 @@ function checkButton(t) {
     'aria-label': done ? `Mark "${t.title}" as not done` : `Mark "${t.title}" as done`,
     onclick: (e) => {
       e.stopPropagation();
+      if (!done) holdRow(e.currentTarget.closest('.row'));
       patchTask(t.id, { status: done ? OPEN : DONE });
     },
   }, icon('check', 13));
@@ -108,7 +127,11 @@ function stepRow(item) {
       class: 'check sm',
       title: 'Mark step as done',
       'aria-label': `Mark done: ${st.title}`,
-      onclick: (e) => { e.stopPropagation(); toggleStepOf(t.id, st.id); },
+      onclick: (e) => {
+        e.stopPropagation();
+        holdRow(e.currentTarget.closest('.row'));
+        toggleStepOf(t.id, st.id);
+      },
     }, icon('check', 12)),
     h('button', { type: 'button', class: 'row-main', 'aria-label': `Open ${t.title}` },
       h('span', { class: 'row-title' }, h('span', { class: 'text', text: st.title })),
@@ -278,7 +301,12 @@ export async function patchTask(id, changes) {
   try {
     const detail = await api(`/tasks/${encodeURIComponent(id)}`, { method: 'PATCH', body: changes });
     app.applyDetail(detail);
-    if (changes.status === DONE && !detail.next_task) toast('Nice — marked as done');
+    // Undo puts back the state it had (and a Waiting task's chase date). Not offered when
+    // a repeating task has already made its next one.
+    if (changes.status === DONE && !detail.next_task) {
+      const back = before.status === WAITING ? { status: WAITING, waiting_until: before.waiting_until ?? null } : { status: before.status };
+      toast(`Done: ${before.title}`, 'info', { label: 'Undo', run: () => patchTask(id, back) });
+    }
   } catch (err) {
     state.tasks[i] = before;
     render();

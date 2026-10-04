@@ -72,13 +72,18 @@ export function sparkIcon(size = 16) {
   return el;
 }
 
-export function toast(message, type = 'info') {
-  const el = h('div', { class: `toast ${type}`, text: message });
-  $('#toasts').append(el);
-  setTimeout(() => {
+// action: { label, run } adds a button (Undo); the toast then stays a little longer.
+export function toast(message, type = 'info', action = null) {
+  const el = h('div', { class: `toast ${type}` }, h('span', { text: message }));
+  const leave = () => {
     el.classList.add('leaving');
     setTimeout(() => el.remove(), 220);
-  }, type === 'error' ? 5000 : 2400);
+  };
+  if (action) {
+    el.append(h('button', { type: 'button', class: 'toast-action', text: action.label, onclick: () => { leave(); action.run(); } }));
+  }
+  $('#toasts').append(el);
+  setTimeout(leave, type === 'error' || action ? 5000 : 2400);
 }
 
 // Textareas grow with their content instead of showing a scrollbar or a tall empty box.

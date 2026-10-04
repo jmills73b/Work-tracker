@@ -330,7 +330,8 @@ kbd {
 .list-head span:nth-child(2) { grid-area: main; }
 .row { position: relative; min-height: 62px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.12s; }
 .row:last-child { border-bottom: 0; }
-.row:hover { background: var(--surface-hover); }
+@media (hover: hover) { .row:hover { background: var(--surface-hover); } }
+.row.is-leaving { pointer-events: none; }
 .row::before {
   content: "";
   position: absolute;
@@ -378,7 +379,9 @@ kbd {
   color: transparent;
   transition: all 0.15s;
 }
-.check:hover { border-color: var(--green); color: var(--green); }
+/* Only where there is a real pointer: on touch screens hover sticks to whatever is under
+   the last tap, which made the next row's circle look ticked. */
+@media (hover: hover) { .check:hover { border-color: var(--green); color: var(--green); } }
 /* Only the item's own tick: a finished task must not make its subtasks look ticked. */
 .row.is-done > .check { background: var(--green); border-color: var(--green); color: #fff; }
 
@@ -961,3 +964,8 @@ body:not([data-view="today"]) #plan-btn { display: none; }
 .assist-step-words { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .assist-step-words .old { color: var(--text-3); text-decoration: line-through; font-size: 13px; }
 .assist-step-words .new { font-weight: 550; }
+
+/* ---------- Toast action (Undo) ---------- */
+.toast { display: flex; align-items: center; gap: 12px; pointer-events: auto; }
+.toast-action { margin-left: auto; padding: 4px 10px; border: 0; border-radius: 6px; background: transparent; color: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
+@media (pointer: coarse) { .toast-action { min-height: 36px; } }
