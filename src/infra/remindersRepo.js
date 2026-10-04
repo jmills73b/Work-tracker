@@ -1,31 +1,31 @@
-import { DEFAULT_SETTINGS } from '../domain/reminders.js';
+import { DEFAULT_SETTINGS, parseTimes } from '../domain/reminders.js';
 
 const fromRow = (r) => ({
   enabled: Boolean(r.enabled),
-  digest_time: r.digest_time,
+  digest_times: parseTimes(r.digest_times ?? r.digest_time),
   time_zone: r.time_zone,
   include_tomorrow: Boolean(r.include_tomorrow),
-  last_digest_date: r.last_digest_date ?? null,
+  last_digest_slot: r.last_digest_slot ?? null,
 });
 
 export async function getSettings(env, userId) {
   const row = await env.DB.prepare(
-    'SELECT enabled, digest_time, time_zone, include_tomorrow, last_digest_date FROM reminder_settings WHERE user_id = ?',
+    'SELECT enabled, digest_times, digest_time, time_zone, include_tomorrow, last_digest_slot FROM reminder_settings WHERE user_id = ?',
   ).bind(userId).first();
-  return row ? fromRow(row) : { ...DEFAULT_SETTINGS, last_digest_date: null };
+  return row ? fromRow(row) : { ...DEFAULT_SETTINGS, digest_times: [...DEFAULT_SETTINGS.digest_times], last_digest_slot: null };
 }
 
 export function saveSettings(env, userId, s) {
   return env.DB.prepare(
-    `INSERT INTO reminder_settings (user_id, enabled, digest_time, time_zone, include_tomorrow)
-     VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT (user_id) DO UPDATE SET enabled = excluded.enabled, digest_time = excluded.digest_time,
+    `INSERT INTO reminder_settings (user_id, enabled, digest_time, digest_times, time_zone, include_tomorrow)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT (user_id) DO UPDATE SET enabled = excluded.enabled, digest_times = excluded.digest_times,
        time_zone = excluded.time_zone, include_tomorrow = excluded.include_tomorrow`,
-  ).bind(userId, s.enabled ? 1 : 0, s.digest_time, s.time_zone, s.include_tomorrow ? 1 : 0).run();
+  ).bind(userId, s.enabled ? 1 : 0, s.digest_times[0], s.digest_times.join(','), s.time_zone, s.include_tomorrow ? 1 : 0).run();
 }
 
-export function markDigestSent(env, userId, localDate) {
-  return env.DB.prepare('UPDATE reminder_settings SET last_digest_date = ? WHERE user_id = ?').bind(localDate, userId).run();
+export function markDigestSent(env, userId, slot) {
+  return env.DB.prepare('UPDATE reminder_settings SET last_digest_slot = ? WHERE user_id = ?').bind(slot, userId).run();
 }
 
 export async function listSubscriptions(env, userId) {
@@ -58,7 +58,7 @@ export function markDelivered(env, id, at) {
 // Everyone with reminders on and at least one device to send to.
 export async function usersToRemind(env) {
   const { results } = await env.DB.prepare(
-    `SELECT s.user_id, s.enabled, s.digest_time, s.time_zone, s.include_tomorrow, s.last_digest_date
+    `SELECT s.user_id, s.enabled, s.digest_times, s.digest_time, s.time_zone, s.include_tomorrow, s.last_digest_slot
      FROM reminder_settings s
      WHERE s.enabled = 1 AND EXISTS (SELECT 1 FROM push_subscriptions p WHERE p.user_id = s.user_id)`,
   ).all();

@@ -303,9 +303,17 @@
         <button type="button" class="btn" id="push-disable" hidden>Turn off for this device</button>
         <button type="button" class="btn ghost" id="push-test" hidden>Send a test</button>
       </div>
-      <label class="check-row"><input type="checkbox" name="enabled"> <span>Send a morning digest of what's overdue and due today</span></label>
-      <label class="field"><span>Digest time</span><input class="input" type="time" name="digest_time" step="900" required></label>
-      <label class="check-row"><input type="checkbox" name="include_tomorrow"> <span>Also warn me about Urgent and High tasks due tomorrow</span></label>
+      <label class="check-row"><input type="checkbox" name="enabled"> <span>Remind me what's overdue and due today</span></label>
+      <fieldset class="field reminder-times">
+        <legend>Reminder times (up to 3; clear one to drop it)</legend>
+        <div class="time-row">
+          <input class="input" type="time" name="digest_time_1" step="900" aria-label="First reminder time">
+          <input class="input" type="time" name="digest_time_2" step="900" aria-label="Second reminder time">
+          <input class="input" type="time" name="digest_time_3" step="900" aria-label="Third reminder time">
+        </div>
+        <span class="hint">A time from 5pm also lists everything due tomorrow, so you can plan ahead.</span>
+      </fieldset>
+      <label class="check-row"><input type="checkbox" name="include_tomorrow"> <span>In daytime reminders, also warn me about Urgent and High tasks due tomorrow</span></label>
       <p class="hint" id="reminders-tz"></p>
       <p class="form-error" id="reminders-error" role="alert" hidden></p>
       <div class="dialog-actions">

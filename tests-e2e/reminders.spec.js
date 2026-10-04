@@ -11,8 +11,13 @@ test('reminder settings save, survive a reload, and the screen says when push is
   await expect(page.locator('#push-enable')).toBeDisabled();
 
   const form = page.locator('#reminders-form');
-  await expect(form.locator('[name=digest_time]')).toHaveValue('07:45');
-  await form.locator('[name=digest_time]').fill('08:30');
+  // The default is three a day: 07:30, 10:00 and 20:00.
+  await expect(form.locator('[name=digest_time_1]')).toHaveValue('07:30');
+  await expect(form.locator('[name=digest_time_2]')).toHaveValue('10:00');
+  await expect(form.locator('[name=digest_time_3]')).toHaveValue('20:00');
+  // Change one, drop one.
+  await form.locator('[name=digest_time_1]').fill('08:30');
+  await form.locator('[name=digest_time_2]').fill('');
   await form.locator('[name=include_tomorrow]').uncheck();
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(page.locator('.toast').last()).toHaveText('Reminder settings saved');
@@ -20,7 +25,9 @@ test('reminder settings save, survive a reload, and the screen says when push is
   await page.reload();
   await page.locator('#user-button').click();
   await page.getByRole('menuitem', { name: 'Reminders' }).click();
-  await expect(form.locator('[name=digest_time]')).toHaveValue('08:30');
+  await expect(form.locator('[name=digest_time_1]')).toHaveValue('08:30');
+  await expect(form.locator('[name=digest_time_2]')).toHaveValue('20:00');
+  await expect(form.locator('[name=digest_time_3]')).toHaveValue('');
   await expect(form.locator('[name=include_tomorrow]')).not.toBeChecked();
   await expect(form.locator('[name=enabled]')).toBeChecked();
 });

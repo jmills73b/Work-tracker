@@ -1550,9 +1550,10 @@
   function fillReminderForm() {
     const f = remindersForm().elements;
     f.namedItem('enabled').checked = pushConfig.settings.enabled;
-    f.namedItem('digest_time').value = pushConfig.settings.digest_time;
+    const times = pushConfig.settings.digest_times || [];
+    for (let i = 1; i <= 3; i += 1) f.namedItem(`digest_time_${i}`).value = times[i - 1] || '';
     f.namedItem('include_tomorrow').checked = pushConfig.settings.include_tomorrow;
-    $('#reminders-tz').textContent = `Times are in ${deviceTimeZone().replace(/_/g, ' ')}. Nothing is sent on a day with nothing due.`;
+    $('#reminders-tz').textContent = `Times are in ${deviceTimeZone().replace(/_/g, ' ')}. Nothing is sent when nothing is due, and each reminder replaces the last on your phone.`;
   }
 
   async function renderPushStatus() {
@@ -1640,12 +1641,17 @@
   async function saveReminderSettings(e) {
     e.preventDefault();
     const f = remindersForm().elements;
+    const times = [1, 2, 3].map((i) => f.namedItem(`digest_time_${i}`).value).filter(Boolean);
+    if (!times.length) {
+      showFormError($('#reminders-error'), 'Choose at least one reminder time');
+      return;
+    }
     try {
       const { settings } = await api('/push/settings', {
         method: 'PUT',
         body: {
           enabled: f.namedItem('enabled').checked,
-          digest_time: f.namedItem('digest_time').value,
+          digest_times: times,
           include_tomorrow: f.namedItem('include_tomorrow').checked,
           time_zone: deviceTimeZone(),
         },

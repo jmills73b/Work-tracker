@@ -1,8 +1,12 @@
-// The morning digest: when it is due, and what it says. Pure: callers pass "now".
+// Reminder digests: when one is due, and what it says. Pure: callers pass "now".
+// Up to three times a day. A time from 17:00 on is an evening digest, which also looks
+// ahead to everything due tomorrow.
 
-export const DEFAULT_SETTINGS = { enabled: true, digest_time: '07:45', time_zone: 'Europe/London', include_tomorrow: true };
-// A digest missed by more than this (the Worker was down, the time was changed) waits
-// for tomorrow rather than arriving in the evening.
+export const DEFAULT_SETTINGS = { enabled: true, digest_times: ['07:30', '10:00', '20:00'], time_zone: 'Europe/London', include_tomorrow: true };
+export const MAX_TIMES = 3;
+export const EVENING_FROM = '17:00';
+// A digest missed by more than this (the Worker was down, the time was changed) is
+// skipped rather than arriving hours later.
 const LATE_LIMIT_MINUTES = 180;
 const MAX_LINES = 4;
 
@@ -26,20 +30,34 @@ export function localNow(now, timeZone) {
 
 const toMinutes = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
 
+// The reminder to send now, as { date, time, slot }, or null. The latest time that has
+// passed within the late limit wins (if 07:30 was missed and it's 10:05, only the 10:00
+// one goes), and a slot is sent once: `slot` ('YYYY-MM-DD HH:MM') must be later than the
+// last one handled.
 export function digestDue(settings, now) {
   if (!settings.enabled) return null;
   const local = localNow(now, settings.time_zone);
-  if (settings.last_digest_date === local.date) return null;
-  const late = local.minutes - toMinutes(settings.digest_time);
-  return late >= 0 && late < LATE_LIMIT_MINUTES ? local.date : null;
+  const passed = settings.digest_times.filter((t) => {
+    const late = local.minutes - toMinutes(t);
+    return late >= 0 && late < LATE_LIMIT_MINUTES;
+  });
+  if (!passed.length) return null;
+  const time = passed[passed.length - 1];
+  const slot = `${local.date} ${time}`;
+  if (settings.last_digest_slot && settings.last_digest_slot >= slot) return null;
+  return { date: local.date, time, slot };
 }
+
+export const isEvening = (time) => time >= EVENING_FROM;
 
 const addDays = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
 const daysBetween = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000);
 
 // What needs attention on `today` (the user's local date). Tasks come with their subtasks
 // attached, as listTasks returns them. Done tasks and done subtasks never count.
-export function collectDue(tasks, today, { includeTomorrow = true } = {}) {
+// In the evening, `allTomorrow` lists everything due tomorrow (subtasks too), not just
+// Urgent and High tasks.
+export function collectDue(tasks, today, { includeTomorrow = true, allTomorrow = false } = {}) {
   const overdue = [];
   const dueToday = [];
   const tomorrow = [];
@@ -54,7 +72,8 @@ export function collectDue(tasks, today, { includeTomorrow = true } = {}) {
       if (!item.date) continue;
       if (item.date < today) overdue.push({ ...item, daysLate: daysBetween(item.date, today) });
       else if (item.date === today) dueToday.push(item);
-      else if (includeTomorrow && item.date === tomorrowDate && !item.subtask && (item.priority === 'urgent' || item.priority === 'high')) tomorrow.push(item);
+      else if (item.date === tomorrowDate && (allTomorrow
+        || (includeTomorrow && !item.subtask && (item.priority === 'urgent' || item.priority === 'high')))) tomorrow.push(item);
     }
   }
   overdue.sort((a, b) => b.daysLate - a.daysLate || a.title.localeCompare(b.title));
@@ -64,14 +83,16 @@ export function collectDue(tasks, today, { includeTomorrow = true } = {}) {
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 // The notification, or null when there is nothing to say (no news is no notification).
-export function buildDigest(due, today) {
+// Each digest replaces the last one on the device (same tag), so the phone shows only
+// the latest picture.
+export function buildDigest(due, today, { evening = false } = {}) {
   const { overdue, dueToday, tomorrow } = due;
   if (!overdue.length && !dueToday.length && !tomorrow.length) return null;
 
   const counts = [];
   if (overdue.length) counts.push(`${overdue.length} overdue`);
-  if (dueToday.length) counts.push(`${dueToday.length} due today`);
-  if (tomorrow.length) counts.push(`${plural(tomorrow.length, 'priority task')} due tomorrow`);
+  if (dueToday.length) counts.push(`${dueToday.length} ${evening ? 'still due today' : 'due today'}`);
+  if (tomorrow.length) counts.push(evening ? `${tomorrow.length} due tomorrow` : `${plural(tomorrow.length, 'priority task')} due tomorrow`);
 
   const lines = [
     ...overdue.map((i) => `• ${i.title}, ${i.daysLate}d overdue`),
@@ -84,7 +105,13 @@ export function buildDigest(due, today) {
   return { title: counts.join(' · '), body: shown.join('\n'), tag: `digest-${today}`, url: '/' };
 }
 
-const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+export const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+// Stored as 'HH:MM,HH:MM'; anything unreadable falls back to the default times.
+export function parseTimes(raw) {
+  const times = String(raw || '').split(',').filter((t) => TIME_RE.test(t));
+  return times.length ? [...new Set(times)].sort().slice(0, MAX_TIMES) : [...DEFAULT_SETTINGS.digest_times];
+}
 
 // PUT body for the settings form. Missing keys keep their current value.
 export function validateSettings(input, current = DEFAULT_SETTINGS) {
@@ -98,9 +125,12 @@ export function validateSettings(input, current = DEFAULT_SETTINGS) {
     if (typeof input.include_tomorrow !== 'boolean') return { error: 'include_tomorrow must be true or false' };
     out.include_tomorrow = input.include_tomorrow;
   }
-  if ('digest_time' in input) {
-    if (!TIME_RE.test(input.digest_time)) return { error: 'Digest time must be HH:MM' };
-    out.digest_time = input.digest_time;
+  if ('digest_times' in input) {
+    const times = input.digest_times;
+    if (!Array.isArray(times) || !times.length || times.length > MAX_TIMES || !times.every((t) => typeof t === 'string' && TIME_RE.test(t))) {
+      return { error: `Choose between 1 and ${MAX_TIMES} reminder times (HH:MM)` };
+    }
+    out.digest_times = [...new Set(times)].sort();
   }
   if ('time_zone' in input) {
     if (!isTimeZone(input.time_zone)) return { error: 'Unknown time zone' };

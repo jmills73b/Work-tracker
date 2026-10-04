@@ -40,7 +40,7 @@ describe('subscribe', () => {
     const res = await subscribe(jsonRequest('/api/push/subscriptions', { endpoint: 'https://web.push.apple.com/x', keys: keys(), time_zone: 'America/New_York' }), { DB: db }, USER);
     expect(res.status).toBe(201);
     const settings = db.calls.find((c) => c.sql?.startsWith('INSERT INTO reminder_settings'));
-    expect(settings.params).toEqual([7, 1, '07:45', 'America/New_York', 1]);
+    expect(settings.params).toEqual([7, 1, '07:30', '07:30,10:00,20:00', 'America/New_York', 1]);
   });
 });
 
@@ -68,9 +68,9 @@ describe('deliver', () => {
 });
 
 describe('runDigests', () => {
-  // 07:50 in London on Saturday 3 October 2026.
+  // 07:50 in London on Saturday 3 October 2026: the 07:30 reminder is due.
   const NOW = new Date('2026-10-03T06:50:00Z');
-  const settingsRow = (over = {}) => ({ user_id: 7, enabled: 1, digest_time: '07:45', time_zone: 'Europe/London', include_tomorrow: 1, last_digest_date: null, ...over });
+  const settingsRow = (over = {}) => ({ user_id: 7, enabled: 1, digest_times: '07:30,10:00,20:00', time_zone: 'Europe/London', include_tomorrow: 1, last_digest_slot: null, ...over });
 
   function setup({ tasks, settings = settingsRow() }) {
     const d = device();
@@ -92,8 +92,8 @@ describe('runDigests', () => {
     const body = fetchImpl.mock.calls[0][1].body;
     const payload = JSON.parse(ece.decrypt(Buffer.from(body), { version: 'aes128gcm', privateKey: d.ecdh, authSecret: d.auth }).toString());
     expect(payload).toMatchObject({ title: '1 due today', body: '• Board deck, today' });
-    const mark = db.calls.find((c) => c.sql?.startsWith('UPDATE reminder_settings SET last_digest_date'));
-    expect(mark.params).toEqual(['2026-10-03', 7]);
+    const mark = db.calls.find((c) => c.sql?.startsWith('UPDATE reminder_settings SET last_digest_slot'));
+    expect(mark.params).toEqual(['2026-10-03 07:30', 7]);
   });
 
   it('stays quiet on a day with nothing due, but still marks the morning so it is not rechecked', async () => {
@@ -101,11 +101,11 @@ describe('runDigests', () => {
     const fetchImpl = vi.fn();
     expect(await runDigests(await vapidEnv(db), NOW, { fetchImpl })).toEqual([{ userId: 7, sent: 0, failed: 0, quiet: true }]);
     expect(fetchImpl).not.toHaveBeenCalled();
-    expect(db.calls.some((c) => c.sql?.startsWith('UPDATE reminder_settings SET last_digest_date'))).toBe(true);
+    expect(db.calls.some((c) => c.sql?.startsWith('UPDATE reminder_settings SET last_digest_slot'))).toBe(true);
   });
 
   it('does nothing for a user already sent today', async () => {
-    const { db } = setup({ tasks: [{ id: 't1', title: 'x', status: 'todo', priority: 'high', target_date: '2026-10-03' }], settings: settingsRow({ last_digest_date: '2026-10-03' }) });
+    const { db } = setup({ tasks: [{ id: 't1', title: 'x', status: 'todo', priority: 'high', target_date: '2026-10-03' }], settings: settingsRow({ last_digest_slot: '2026-10-03 07:30' }) });
     const fetchImpl = vi.fn();
     expect(await runDigests(await vapidEnv(db), NOW, { fetchImpl })).toEqual([]);
     expect(fetchImpl).not.toHaveBeenCalled();

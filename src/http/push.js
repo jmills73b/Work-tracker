@@ -19,7 +19,7 @@ export const vapidSubject = (env) => env.VAPID_SUBJECT || 'mailto:reminders@inva
 export async function config(env, user) {
   const jwk = vapidJwk(env);
   const [settings, subs] = await Promise.all([repo.getSettings(env, user.id), repo.listSubscriptions(env, user.id)]);
-  const { last_digest_date: _last, ...visible } = settings;
+  const { last_digest_slot: _last, ...visible } = settings;
   return json({ public_key: jwk ? vapidPublicKey(jwk) : null, settings: visible, devices: subs.length, endpoints: subs.map((s) => s.endpoint) });
 }
 
@@ -28,7 +28,7 @@ export async function putSettings(request, env, user) {
   const { value, error } = validateSettings(await request.json(), current);
   if (error) return json({ error }, 400);
   await repo.saveSettings(env, user.id, value);
-  const { last_digest_date: _last, ...visible } = value;
+  const { last_digest_slot: _last, ...visible } = value;
   return json({ settings: visible });
 }
 

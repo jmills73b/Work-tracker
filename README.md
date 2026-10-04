@@ -7,7 +7,7 @@ A clean, private tracker for your own tasks. Capture a task, set its priority an
 - **Board view**: drag cards between To do, In progress, Blocked and Done
 - **Summary tiles** (Active, In progress, Due this week, Overdue, Done in the last 30 days). Click a tile to filter by it
 - **Subtasks**: a checklist under each task, each with an optional due date. Shown as "2/5" in the list, and listed on board cards where they can be ticked off
-- **Reminders**: a morning digest on your phone of what's overdue and due today (plus Urgent and High tasks due tomorrow). Free web push, set up from your name menu → Reminders
+- **Reminders**: up to three a day on your phone (7:30am, 10am and 8pm by default) of what's overdue and due today, plus Urgent and High tasks due tomorrow. The evening one also lists everything due tomorrow. Free web push, set up from your name menu → Reminders
 - **Quick add**: type `Board deck fri !high #RDH` and it becomes a High task due Friday for RDH, with a preview before saving
 - **Teams**: each task can belong to a team (Dev Ops, RDH, GDS, or none), with a team filter on the list and board; admins manage the team list
 - **Recurring tasks**: every week, 2 weeks, month, quarter or year, or N days after done. Marking one done brings the next one back with its subtasks

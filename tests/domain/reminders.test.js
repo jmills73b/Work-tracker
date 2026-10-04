@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { buildDigest, collectDue, digestDue, localNow, validateSettings } from '../../src/domain/reminders.js';
+import { buildDigest, collectDue, digestDue, isEvening, localNow, parseTimes, validateSettings } from '../../src/domain/reminders.js';
 
-const london = (over = {}) => ({ enabled: true, digest_time: '07:45', time_zone: 'Europe/London', include_tomorrow: true, last_digest_date: null, ...over });
+const london = (over = {}) => ({ enabled: true, digest_times: ['07:30', '10:00', '20:00'], time_zone: 'Europe/London', include_tomorrow: true, last_digest_slot: null, ...over });
 
 describe('localNow', () => {
   it('reads London summer time as UTC+1', () => {
@@ -18,25 +18,53 @@ describe('localNow', () => {
 });
 
 describe('digestDue', () => {
-  it('is due once the local digest time has passed', () => {
-    expect(digestDue(london(), new Date('2026-10-03T06:45:00Z'))).toBe('2026-10-03');
+  // London is UTC+1 in October: 07:30 local is 06:30Z.
+  it('is due once a reminder time has passed, naming that slot', () => {
+    expect(digestDue(london(), new Date('2026-10-03T06:30:00Z'))).toEqual({ date: '2026-10-03', time: '07:30', slot: '2026-10-03 07:30' });
   });
 
-  it('is not due a minute before the digest time', () => {
-    expect(digestDue(london(), new Date('2026-10-03T06:44:00Z'))).toBeNull();
+  it('is not due a minute before', () => {
+    expect(digestDue(london(), new Date('2026-10-03T06:29:00Z'))).toBeNull();
   });
 
-  it('goes out at most once per local day', () => {
-    expect(digestDue(london({ last_digest_date: '2026-10-03' }), new Date('2026-10-03T07:00:00Z'))).toBeNull();
+  it('sends each time once: after 07:30 is handled, the next is 10:00', () => {
+    const sent = london({ last_digest_slot: '2026-10-03 07:30' });
+    expect(digestDue(sent, new Date('2026-10-03T06:45:00Z'))).toBeNull();
+    expect(digestDue(sent, new Date('2026-10-03T09:00:00Z'))).toMatchObject({ time: '10:00' });
   });
 
-  it('skips a digest missed by three hours or more rather than sending it in the afternoon', () => {
-    expect(digestDue(london(), new Date('2026-10-03T09:44:00Z'))).toBe('2026-10-03');
-    expect(digestDue(london(), new Date('2026-10-03T09:45:00Z'))).toBeNull();
+  it('sends only the latest when two have passed (07:30 missed, now 10:05)', () => {
+    expect(digestDue(london(), new Date('2026-10-03T09:05:00Z'))).toMatchObject({ time: '10:00' });
+    // And 07:30 isn't sent afterwards.
+    expect(digestDue(london({ last_digest_slot: '2026-10-03 10:00' }), new Date('2026-10-03T09:10:00Z'))).toBeNull();
+  });
+
+  it('sends the evening one, and starts afresh the next day', () => {
+    expect(digestDue(london({ last_digest_slot: '2026-10-03 10:00' }), new Date('2026-10-03T19:00:00Z'))).toMatchObject({ time: '20:00' });
+    expect(digestDue(london({ last_digest_slot: '2026-10-03 20:00' }), new Date('2026-10-04T06:31:00Z'))).toMatchObject({ slot: '2026-10-04 07:30' });
+  });
+
+  it('skips a time missed by three hours or more', () => {
+    const one = london({ digest_times: ['07:30'] });
+    expect(digestDue(one, new Date('2026-10-03T09:29:00Z'))).toMatchObject({ time: '07:30' });
+    expect(digestDue(one, new Date('2026-10-03T09:30:00Z'))).toBeNull();
   });
 
   it('sends nothing when reminders are switched off', () => {
     expect(digestDue(london({ enabled: false }), new Date('2026-10-03T06:50:00Z'))).toBeNull();
+  });
+
+  it('treats 17:00 onwards as the evening', () => {
+    expect([isEvening('16:59'), isEvening('17:00'), isEvening('20:00')]).toEqual([false, true, true]);
+  });
+});
+
+describe('parseTimes', () => {
+  it('reads the stored list, sorted and capped at three, falling back to the defaults', () => {
+    expect(parseTimes('20:00,07:30')).toEqual(['07:30', '20:00']);
+    expect(parseTimes('08:00')).toEqual(['08:00']);
+    expect(parseTimes('')).toEqual(['07:30', '10:00', '20:00']);
+    expect(parseTimes('junk')).toEqual(['07:30', '10:00', '20:00']);
   });
 });
 
@@ -96,7 +124,7 @@ describe('buildDigest', () => {
 
 describe('validateSettings', () => {
   it('keeps settings the request did not mention', () => {
-    expect(validateSettings({ digest_time: '08:30' }).value).toMatchObject({ digest_time: '08:30', enabled: true, include_tomorrow: true });
+    expect(validateSettings({ digest_times: ['20:00', '08:30', '08:30'] }).value).toMatchObject({ digest_times: ['08:30', '20:00'], enabled: true, include_tomorrow: true });
   });
 
   it('reads enabled: false as a real change, and refuses 0/1', () => {
@@ -105,7 +133,28 @@ describe('validateSettings', () => {
   });
 
   it('refuses an impossible time and an unknown time zone', () => {
-    expect(validateSettings({ digest_time: '24:00' }).error).toBe('Digest time must be HH:MM');
+    for (const bad of [['24:00'], [], ['07:00', '08:00', '09:00', '10:00'], '07:30']) {
+      expect(validateSettings({ digest_times: bad }).error).toBe('Choose between 1 and 3 reminder times (HH:MM)');
+    }
     expect(validateSettings({ time_zone: 'Mars/Olympus' }).error).toBe('Unknown time zone');
+  });
+});
+
+describe('the evening digest', () => {
+  const TODAY = '2026-10-03';
+  const tasks = [
+    { title: 'Still today', status: 'todo', priority: 'low', target_date: '2026-10-03' },
+    { title: 'Low tomorrow', status: 'todo', priority: 'low', target_date: '2026-10-04', subtasks: [{ title: 'Step', done: 0, target_date: '2026-10-04' }] },
+  ];
+
+  it('lists everything due tomorrow, subtasks and low priority included', () => {
+    const due = collectDue(tasks, TODAY, { allTomorrow: true });
+    expect(due.tomorrow.map((i) => i.title)).toEqual(['Low tomorrow', 'Step (Low tomorrow)']);
+    expect(collectDue(tasks, TODAY).tomorrow).toEqual([]);
+  });
+
+  it('says "still due today" and counts tomorrow plainly', () => {
+    const d = buildDigest(collectDue(tasks, TODAY, { allTomorrow: true }), TODAY, { evening: true });
+    expect(d.title).toBe('1 still due today · 2 due tomorrow');
   });
 });

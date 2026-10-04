@@ -999,3 +999,10 @@ input[type="date"].input::-webkit-date-and-time-value { text-align: left; margin
 .passkey-text { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 .passkey-text .hint { margin: 0; font-size: 12px; }
 .btn svg { flex: none; }
+
+/* ---------- Reminder times ---------- */
+.reminder-times { margin: 0; padding: 0; border: 0; }
+.reminder-times legend { margin-bottom: 6px; padding: 0; }
+.time-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.time-row .input { min-width: 0; }
+.reminder-times .hint { margin-top: 6px; font-weight: 400; }
