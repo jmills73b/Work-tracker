@@ -3,7 +3,7 @@
 // one Create button. The fields fold into one summary line; the log sits below the steps.
 import { addDays, DONE, HIGH, NORMAL, OPEN, PRIORITY, STATUS, WAITING } from '../shared/rules.js';
 import { api, notify } from './api.js';
-import { dueInfo, fullTime, localIso, relTime, shortDate, weekdayDate } from './dates.js';
+import { dueInfo, fullTime, localIso, relTime, shortDate, weekdayDate, whenLabel } from './dates.js';
 import { $, autoGrow, h, icon, toast } from './dom.js';
 import { describeRepeat, duplicateDraft, placeDrafts } from './model.js';
 import { addTeamNamed } from './settings.js';
@@ -36,6 +36,7 @@ export function openNew(prefill = null) {
   if (prefill.title) field('title').value = prefill.title;
   if (prefill.description) field('description').value = prefill.description;
   if (prefill.target_date) field('target_date').value = prefill.target_date;
+  if (prefill.planned_on) field('planned_on').value = prefill.planned_on;
   if (prefill.priority) field('high').checked = prefill.priority === HIGH;
   if (prefill.team_id != null) field('team_id').value = String(prefill.team_id);
   setRepeatField(prefill.recurrence ?? null);
@@ -54,6 +55,7 @@ function showPanel(task) {
   $('#task-menu-wrap').hidden = !task;
   closeTaskMenu();
   $('#create-actions').hidden = Boolean(task);
+  $('#status-field').hidden = !task; // a new task is always Open
   $('#log-section').hidden = !task;
   $('#task-fields').open = !task;
   $('#log-note').value = '';
@@ -111,12 +113,12 @@ function fillForm(task) {
 // Everything but the two text boxes, so a save landing while you type doesn't move your caret.
 function fillFields(t) {
   field('status').value = t.status in STATUS ? t.status : OPEN;
-  field('waiting_until').value = t.waiting_until || '';
+  field('planned_on').value = t.planned_on || '';
   field('target_date').value = t.target_date || '';
   field('team_id').value = t.team_id == null ? '' : String(t.team_id);
   field('high').checked = t.priority === HIGH;
   setRepeatField(t.recurrence || null);
-  $('#chase-field').hidden = field('status').value !== WAITING;
+  showWhenLabel();
   renderSummary();
 }
 
@@ -125,7 +127,7 @@ function readForm() {
     title: field('title').value.trim(),
     description: field('description').value.trim(),
     status: field('status').value,
-    waiting_until: field('status').value === WAITING ? field('waiting_until').value || null : null,
+    planned_on: field('planned_on').value || null,
     priority: field('high').checked ? HIGH : NORMAL,
     target_date: field('target_date').value || null,
     team_id: field('team_id').value && field('team_id').value !== NEW_TEAM ? Number(field('team_id').value) : null,
@@ -148,11 +150,17 @@ function readRepeatField() {
   return `after:${n}`;
 }
 
-// The one line that stands for all the fields: "Open · Due Fri 10 Oct · High · RDH".
+// A Waiting task's "when" is the day to chase it.
+function showWhenLabel() {
+  $('#when-label').textContent = field('status').value === WAITING ? 'Chase on' : 'When';
+}
+
+// The one line that stands for all the fields: "Open · Tomorrow · Deadline Fri 10 Oct · High · RDH".
 function renderSummary() {
   const f = readForm();
-  const parts = [STATUS[f.status] + (f.status === WAITING && f.waiting_until ? ` (chase ${shortDate(f.waiting_until)})` : '')];
-  parts.push(f.target_date ? `Due ${weekdayDate(f.target_date)}` : 'No due date');
+  const parts = [STATUS[f.status]];
+  if (f.planned_on && f.status !== DONE) parts.push(f.status === WAITING ? `chase ${shortDate(f.planned_on)}` : whenLabel(f.planned_on));
+  if (f.target_date) parts.push(`Deadline ${weekdayDate(f.target_date)}`);
   if (f.priority === HIGH) parts.push(PRIORITY.high);
   const team = state.teams.find((t) => t.id === f.team_id);
   if (team) parts.push(team.name);
@@ -211,9 +219,10 @@ function onFieldChange(e) {
   const t = e.target;
   if (t === field('team_id') && t.value === NEW_TEAM) return newTeamFromPicker();
   if (t === field('status')) {
-    $('#chase-field').hidden = t.value !== WAITING;
-    // Waiting means someone else has it; chase in two days unless you choose otherwise.
-    if (t.value === WAITING && !field('waiting_until').value) field('waiting_until').value = addDays(localIso(), 2);
+    // Waiting means someone else has it: chase in two days unless a later day is set.
+    const today = localIso();
+    if (t.value === WAITING && !(field('planned_on').value > today)) field('planned_on').value = addDays(today, 2);
+    showWhenLabel();
   }
   if (t === field('recurrence')) $('#repeat-days-field').hidden = t.value !== 'after';
   if (t === field('target_date') && !state.current) renderSteps(placeDrafts(state.steps, t.value || null));
@@ -221,8 +230,8 @@ function onFieldChange(e) {
   if (!state.current) return;
   const f = readForm();
   const byField = {
-    status: { status: f.status, waiting_until: f.waiting_until },
-    waiting_until: { waiting_until: f.waiting_until },
+    status: { status: f.status, planned_on: f.planned_on },
+    planned_on: { planned_on: f.planned_on },
     target_date: { target_date: f.target_date },
     team_id: { team_id: f.team_id },
     high: { priority: f.priority },
@@ -275,7 +284,7 @@ export function applyDetail({ task, updates, subtasks, next_task: nextTask }) {
   // Marking a repeating task done made the next one.
   if (nextTask) {
     upsert(nextTask);
-    toast(`Done. Next one is due ${shortDate(nextTask.target_date)}`);
+    toast(`Done. Next one is due ${shortDate(nextTask.target_date || nextTask.planned_on)}`);
   }
   if (state.panelOpen && state.current && state.current.id === task.id) {
     state.current = task;

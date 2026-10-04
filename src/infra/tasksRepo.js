@@ -86,14 +86,14 @@ export function nextOccurrenceStatements(env, userId, existing, next, at) {
     id,
     statements: [
       env.DB.prepare(
-        `INSERT INTO tasks (id, user_id, title, description, status, priority, target_date,
+        `INSERT INTO tasks (id, user_id, title, description, status, priority, target_date, planned_on,
                             team_id, recurrence, created_at, updated_at, completed_at)
-         VALUES (?, ?, ?, ?, 'todo', ?, ?, ?, ?, ?, ?, NULL)`,
-      ).bind(id, userId, next.title, next.description, next.priority, next.target_date, next.team_id, next.recurrence, at, at),
+         VALUES (?, ?, ?, ?, 'todo', ?, ?, ?, ?, ?, ?, ?, NULL)`,
+      ).bind(id, userId, next.title, next.description, next.priority, next.target_date, next.planned_on ?? null, next.team_id, next.recurrence, at, at),
       insertUpdate(env, { userId, taskId: id, kind: 'change', note: 'Created from the previous occurrence', at }),
       ...next.subtasks.map((st, position) => insertSubtask(env, { userId, taskId: id, ...st, position, at })),
       env.DB.prepare('UPDATE tasks SET next_task_id = ? WHERE id = ? AND user_id = ?').bind(id, existing.id, userId),
-      insertUpdate(env, { userId, taskId: existing.id, kind: 'change', note: `Next occurrence created, due ${next.target_date}`, at }),
+      insertUpdate(env, { userId, taskId: existing.id, kind: 'change', note: `Next occurrence created, for ${next.target_date || next.planned_on}`, at }),
     ],
   };
 }

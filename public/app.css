@@ -966,6 +966,7 @@ body:not([data-view="today"]) #plan-btn { display: none; }
 .assist-step-words .new { font-weight: 550; }
 
 /* ---------- Toast action (Undo) ---------- */
-.toast { display: flex; align-items: center; gap: 12px; pointer-events: auto; }
-.toast-action { margin-left: auto; padding: 4px 10px; border: 0; border-radius: 6px; background: transparent; color: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
+.toast { display: flex; align-items: center; gap: 12px; }
+.toast-action { pointer-events: auto; margin-left: auto; padding: 4px 10px; border: 0; border-radius: 6px; background: transparent; color: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
 @media (pointer: coarse) { .toast-action { min-height: 36px; } }
+.due.when { color: var(--text-2); }

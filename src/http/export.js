@@ -18,7 +18,7 @@ const file = (body, name, type) => new Response(body, {
   headers: { 'Content-Type': type, 'Content-Disposition': `attachment; filename="${name}"`, 'Cache-Control': 'no-store' },
 });
 
-const COLUMNS = ['Title', 'Status', 'High', 'Due', 'Team', 'Repeats', 'Steps done', 'Steps', 'Notes', 'Created', 'Done on', 'Last log entry'];
+const COLUMNS = ['Title', 'Status', 'High', 'When', 'Deadline', 'Team', 'Repeats', 'Steps done', 'Steps', 'Notes', 'Created', 'Done on', 'Last log entry'];
 
 // RFC 4180: quote every field, double any quote. A leading = + - @ is prefixed with ' so
 // a spreadsheet shows the text instead of running it as a formula.
@@ -32,7 +32,7 @@ export function toCsv(tasks) {
   const rows = tasks.map((t) => {
     const notes = t.log.filter((u) => u.kind === 'note');
     return [
-      t.title, STATUS[t.status] ?? t.status, t.priority === 'high' ? 'Yes' : '', t.target_date, t.team_name, t.recurrence,
+      t.title, STATUS[t.status] ?? t.status, t.priority === 'high' ? 'Yes' : '', t.planned_on, t.target_date, t.team_name, t.recurrence,
       t.steps.filter((s) => s.done).length, t.steps.length, t.description, t.created_at.slice(0, 10),
       t.completed_at ? t.completed_at.slice(0, 10) : '', notes.length ? notes.at(-1).note : '',
     ];

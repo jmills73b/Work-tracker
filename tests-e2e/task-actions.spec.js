@@ -17,6 +17,7 @@ test('Duplicate copies a task with its steps; Delete removes one; Waiting gets a
   await drawer.locator('#task-menu-btn').click();
   await drawer.getByRole('menuitem', { name: 'Duplicate' }).click();
   await expect(drawer.locator('#drawer-eyebrow')).toHaveText('New task');
+  await expect(drawer.locator('#status-field')).toBeHidden(); // a new task is always Open
   await expect(drawer.locator('[name=title]')).toHaveValue('Actions: monthly payroll');
   await expect(drawer.locator('[name=high]')).toBeChecked();
   await expect(drawer.locator('.subtask-title')).toHaveCount(2);
@@ -27,13 +28,16 @@ test('Duplicate copies a task with its steps; Delete removes one; Waiting gets a
   await page.keyboard.press('Escape');
   await expect(page.locator('.row', { hasText: 'Actions: June payroll' }).locator('.subtask-chip')).toHaveText('0/2');
 
-  // Waiting: the chase date defaults to two days out and can be changed.
+  // Waiting: the when becomes the chase day, two days out unless already later.
   await page.locator('.row', { hasText: 'Actions: June payroll' }).click();
   await page.locator('#task-summary').click();
+  await expect(drawer.locator('#when-label')).toHaveText('When');
   await drawer.locator('[name=status]').selectOption('blocked');
-  await expect(drawer.locator('[name=waiting_until]')).toBeVisible();
-  await expect(drawer.locator('[name=waiting_until]')).not.toHaveValue('');
+  await expect(drawer.locator('#when-label')).toHaveText('Chase on');
+  await expect(drawer.locator('[name=planned_on]')).not.toHaveValue('');
   await expect(drawer.locator('#timeline')).toContainText('Status: Open → Waiting');
+  await expect(drawer.locator('#timeline')).toContainText('Chase on');
+  await expect(drawer.locator('[name=target_date]')).toHaveValue('2031-06-28'); // the deadline is untouched
   await expect(drawer.locator('#task-summary')).toContainText('Waiting');
   await page.keyboard.press('Escape');
   await page.locator('#status-filter button[data-status="blocked"]').click();

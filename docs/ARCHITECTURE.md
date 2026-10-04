@@ -46,8 +46,16 @@ Plain ES modules the browser loads directly; `index.html` loads `main.js` with `
 
 - **States** (`migrations/0013_simplify.sql`): Open, Waiting and Done. The stored codes keep the original CHECK constraints: `todo` is Open, `blocked` is Waiting, `done` is Done. The migration folded `in_progress` into `todo`. Labels come from `STATUS` in `rules.js`, and the log still reads an old `in_progress` line as Open.
 - **High flag**: `priority` is `high` or `medium` (Normal). The migration folded `urgent` into `high` and `low` into `medium`.
-- **Waiting** has an optional chase date, `waiting_until`. Choosing Waiting (in the panel or from a row) defaults it to two days out. Leaving Waiting clears it, and the log records "Chase on …". When the date comes, the task leads Today under **To chase** and appears in reminders.
-- **Daily plan**: `planned_on` is the day a task is planned for. The plan screen (`plan.js`) lists what's worth considering for a day (`planCandidates`: planned, due by then, to chase by then, or High and due within a week, planned first), each with a tick that saves at once. While the screen is open, the list keeps its order, so a tick never moves a row from under your finger. A planned task leads Today under **Today's plan** until it's done; an unfinished one carries over. From 17:00 the button plans tomorrow, and the evening reminder opens `/?plan=tomorrow`.
+- **When and Deadline** (`migrations/0014_when_and_own_teams.sql`). A task has at most two dates.
+  - **When** (`planned_on`) is the day you'll act on it. While the task is Waiting, it is the day to chase it. Every routine "when" action sets it: the row's one-tap menu (Today, Tomorrow, Next week, pick a day), the plan screen, choosing Waiting, and quick add (`fri`).
+  - **Deadline** (`target_date`) is optional. It is set only in the panel or with `by fri` / `due fri` in quick add, and nothing routine ever moves it. That is what makes Review's on-time rate mean something.
+  - 0014 moved Waiting tasks' chase dates (`waiting_until`, now unused) into When.
+  - Choosing Waiting sets When two days out unless a later day is already set.
+  - On a Waiting row the menu offers **Chased · again in 2 days** (PATCH `{ planned_on, chased: true }`) and **Got it** (back to Open, When today). `chased` is logged ("Chased · next chase …") and never stored, so the log shows how often you have asked.
+- **Daily plan**: the plan screen (`plan.js`) sets the same When.
+  - It lists open tasks worth considering for a day (`planCandidates`): already planned for it or earlier, a deadline by then, or High with a deadline within a week or none. Waiting tasks and tasks moved to a later day are left out.
+  - Each row has a tick that saves at once. The list keeps its order while open.
+  - From 17:00 the button plans tomorrow, and the evening reminder opens `/?plan=tomorrow`.
 - **Steps** (`subtasks` in the schema, `migrations/0004_subtasks.sql`) are a checklist under a task, kept in the order they were added. They replace percentage progress; `tasks.progress` and `task_updates.progress` stay in the schema, unused.
   - On a saved task, each step change saves immediately. While a task is being created, steps are drafts sent with the create as `subtasks: [titles]`.
   - Ticking a step logs "Completed: …" and leaves the task's state alone. Marking a task done doesn't tick its steps either: they stay an honest record.
@@ -58,7 +66,14 @@ Plain ES modules the browser loads directly; `index.html` loads `main.js` with `
   - An empty title is put back.
   - Only a new task has a Create button, and only a new task asks before discarding.
 - **Log** (`task_updates`): notes you post, plus automatic lines for changes to state, due date, High, team, repeat and steps. Posting a note never changes the task (`POST /api/tasks/:id/updates` ignores `status`).
-- **Today** is the home view (the last view used is remembered per device). `planWeek` (pure) puts each open task in one group: Today's plan if `planned_on` ≤ today; else To chase if Waiting with `waiting_until` ≤ today; else Overdue, Due today or Next 7 days by due date. "Next 7 days" means 1 to 7 days ahead, and it is the only definition of "this week" in the app. Open steps are listed under their own dates, so a step due today shows even when its task is due next month. Each heading carries its count; the old summary tiles are gone. Each row has a ⏱ button for one-tap reschedule: add to or remove from today's plan, due tomorrow, due next week (the coming Monday), Waiting with a chase in 2 days (or "No longer waiting"), or pick a date.
+- **Today** is the home view. `planWeek` (pure) puts each open task in one group:
+  - **To chase**: Waiting, and its When has come.
+  - **Planned for today**: Open, and its When is today or earlier; unfinished ones carry over.
+  - **Next 7 days**: Open, with When 1 to 7 days ahead. Further off it stays out of sight, whatever its deadline: moving a task is a decision to look at it then, and its deadline still shows red when it returns.
+  - **Overdue / Due today / Next 7 days by deadline**: tasks with no When.
+  - Open steps are listed under their own dates. Each heading carries its count.
+  - Rows show when a task was done (Done list), else its deadline (coloured), else its When in plain words, else nothing. On Today, a task placed by a future When shows that day.
+  - Ticking a row keeps it in place, done, for 0.7 s before it leaves, so a second quick tap can't land on the row that slides up. Completing offers Undo for 5 s.
 - **Tasks** view: the Open / Waiting / Done chips, a High-only toggle and sort (due date or recently updated). Done lists newest first. A search looks through every task whatever the chip, done ones last. The team filter applies to every view.
 - **Review** (`computeInsights`, pure, within the team filter) shows:
   - Done in the last 30 days.
@@ -68,18 +83,24 @@ Plain ES modules the browser loads directly; `index.html` loads `main.js` with `
   - Per team: open, overdue, done (90 days) and on time.
   Nothing to measure shows "–", never 0%.
 - **Duplicate** (⋯ menu) opens a new task pre-filled with the title, notes, High, team, repeat and steps (unticked). Each step's date is kept as an offset from the due date (`duplicateDraft`, `placeDrafts`), so the steps follow whatever due date the copy gets. Templates are retired; `templates` and `template_subtasks` stay in the schema, unused, so nothing saved was lost.
-- **Teams** (`migrations/0008_teams.sql`) are shared labels, seeded with Dev Ops, RDH and GDS. Any signed-in user can add, rename and remove them, from name menu → Teams or "New team…" in a task's team picker (`/api/teams`). Each team's count is the signed-in user's own tasks. Removing a team moves its tasks to "No team" in one batch, and that affects everyone's tasks. That is acceptable for a personal tracker with few accounts; revisit if it becomes shared. The old free-text `category` columns stay in the schema, unused.
+- **Teams** are each person's own labels (`migrations/0014_when_and_own_teams.sql`). Every query is scoped to the user, and renaming or removing one never touches anyone else's tasks.
+  - 0014 rebuilt the table: the old name was globally UNIQUE, a column constraint that can't be dropped.
+    - Existing teams went to the first account.
+    - Anyone else with tasks on a team got their own copy.
+    - Links were parked in a scratch table across the rebuild, because D1 refuses to drop a table that rows still reference.
+  - On a fresh database the seeded Dev Ops, RDH and GDS wait unowned, and the first registration claims them.
+  - Add a team from name menu → Teams or "New team…" in a task's team picker (`/api/teams`). Removing one moves your tasks on it to "No team".
 - **Quick add** (the + button and `N`) turns one line into a task with `parseQuickAdd` (`parse.js`, pure, takes "today"). It picks out:
-  - The first date: today, tomorrow, weekdays, next <weekday>, next week, in N days/weeks/months, eow, eom, 12 Oct, 12/10 read as day/month.
+  - The first date: today, tomorrow, weekdays, next <weekday>, next week, in N days/weeks/months, eow, eom, 12 Oct, 12/10 read as day/month. It sets When. After `by` or `due` it sets the Deadline instead.
   - The first `!high`. `!urgent`, `!!` and `!!!` also mean High; `!low`, `!med` and `!normal` mean Normal.
   - The first `#Team`, matched ignoring case, spaces, `_` and `-`. A `#word` naming no team stays in the title.
   A live preview shows how the line was read, and "Add details…" carries it into the full form.
-- **Repeats** (`migrations/0010_recurrence.sql`, `src/domain/recurrence.js`): `recurrence` is null, `weekly:N` (1–4), `monthly:N` (1, 2, 3, 6, 12) or `after:N` (1–365 days after done). Marking one done creates the next occurrence in the same batch: the same task with its steps unticked and moved by as many days as the task moved.
+- **Repeats** (`migrations/0010_recurrence.sql`, `src/domain/recurrence.js`): `recurrence` is null, `weekly:N` (1–4), `monthly:N` (1, 2, 3, 6, 12) or `after:N` (1–365 days after done). Marking one done creates the next occurrence in the same batch: the same task with its steps unticked and moved by as many days as the task moved. A task with a deadline repeats from it; one without, from its When, and the new date lands in the same field.
   - Weekly and monthly count from the original due date and skip dates already past. `after:N` counts from the day it was done, in the person's time zone.
   - `next_task_id` on the done task means done → reopened → done makes only one.
 - **Export** (`GET /api/export?format=json|csv`, `src/http/export.js`): everything the signed-in user owns, as a download.
   - **JSON**: teams, plus tasks with their steps and full log.
-  - **CSV**: one row per task, in plain words. Every field is quoted, and a leading `= + - @` gets a `'` so a spreadsheet never runs it as a formula.
+  - **CSV**: one row per task, in plain words, with When and Deadline as separate columns. Every field is quoted, and a leading `= + - @` gets a `'` so a spreadsheet never runs it as a formula.
 - **✨ Tidy**:
   - **On a task** (the button beside the title): `POST /api/assist` sends the title, notes and open steps together. `SYSTEM_PROMPT` in `src/domain/assist.js` sets the rules:
     - Lead with a verb; titles about 60 characters, steps about 50.
@@ -99,7 +120,7 @@ Plain ES modules the browser loads directly; `index.html` loads `main.js` with `
   - The key is the Worker secret `ANTHROPIC_API_KEY`, copied from the GitHub secret of the same name on every deploy. It never reaches the browser; `GET /api/auth/me` only reports `assistant: true/false`.
 - **Reminders** are web push notifications (`migrations/0007_reminders.sql`, `0012_reminder_times.sql`). A Cron Trigger (`*/15 * * * *`) runs `runDigests` (`src/reminders.js`).
   - **Times**: up to three a day (`digest_times`, default 07:30, 10:00 and 20:00). Each run sends the latest time that passed less than three hours ago, once (`last_digest_slot`).
-  - **Daytime digests**: what's overdue, due today (tasks and open steps), to chase, and High tasks due tomorrow (`collectDue`, `buildDigest`).
+  - **Daytime digests**: what's overdue, due today (tasks and open steps), to chase, and High tasks due tomorrow (`collectDue`, `buildDigest`). A task's When decides its day: planned for today counts as today, and one moved to a later day keeps quiet until then.
   - **From 17:00** a digest is an evening one: what's still due today plus everything due tomorrow. Tapping it opens `/?plan=tomorrow`.
   - A digest with nothing in it isn't sent. Every digest has the same tag, so it replaces the last one on the device.
   - The only setting is the times. The master switch and the "High tomorrow" switch are gone; 0013 set them on for everyone. Reminders are on or off per device.
@@ -110,11 +131,11 @@ Plain ES modules the browser loads directly; `index.html` loads `main.js` with `
 | Route | Purpose |
 | --- | --- |
 | `GET/POST /api/tasks` | List (each with `subtask_total`, `subtask_done`, `subtasks`), create |
-| `GET/PATCH/DELETE /api/tasks/:id` | Detail is `{ task, updates, subtasks }`; a PATCH that finishes a repeating task also returns `next_task` |
+| `GET/PATCH/DELETE /api/tasks/:id` | Detail is `{ task, updates, subtasks }`; a PATCH may carry `chased: true` (logged, not stored); one that finishes a repeating task also returns `next_task` |
 | `POST /api/tasks/:id/updates`, `DELETE …/updates/:uid` | Log a note; delete one |
 | `POST /api/tasks/:id/subtasks` | Add a step (`{ title, target_date? }`) |
 | `PATCH/DELETE /api/tasks/:id/subtasks/:sid` | `{ title?, done?, target_date? }`. `done` must be a real boolean |
-| `GET/POST /api/teams`, `PATCH/DELETE /api/teams/:id` | Team labels: list, add, rename, remove (any signed-in user) |
+| `GET/POST /api/teams`, `PATCH/DELETE /api/teams/:id` | Your team labels: list, add, rename, remove |
 | `GET /api/export?format=json\|csv` | Download everything you own |
 | `POST /api/assist` | `{ title, description, steps[] }` → `{ title, description, steps, reason, changed: { title, description, steps[] } }`. Errors: 429 over 30 an hour; 503 when not set up or Claude is busy; 502 for an unusable reply |
 | `POST /api/assist/update` | `{ task_title, note }` → `{ text, reason, changed }`; same limits and errors |

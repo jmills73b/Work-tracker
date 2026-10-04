@@ -43,6 +43,8 @@ export async function create(env, { name, email, passwordHash, passwordSalt, inv
         `INSERT INTO users (name, email, password_hash, password_salt, is_admin)
          SELECT ?, ?, ?, ?, 1 WHERE NOT EXISTS (SELECT 1 FROM users)`,
       ).bind(name, email, passwordHash, passwordSalt),
+      // The starter teams wait unowned until the first account exists (migrations/0014).
+      db.prepare('UPDATE teams SET user_id = (SELECT id FROM users WHERE email = ?) WHERE user_id IS NULL').bind(email),
     ];
   const [inserted] = await db.batch(stmts);
   if (!inserted.meta.changes) return null;

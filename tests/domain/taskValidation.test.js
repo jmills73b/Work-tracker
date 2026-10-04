@@ -19,13 +19,18 @@ describe('validateTask', () => {
   });
 
   it('refuses a calendar date that does not exist', () => {
-    expect(validateTask({ title: 'T', target_date: '2026-02-30' }).error).toBe('Due date must be YYYY-MM-DD');
+    expect(validateTask({ title: 'T', target_date: '2026-02-30' }).error).toBe('Deadline must be YYYY-MM-DD');
   });
 
   it('accepts only the three states and the High flag', () => {
     expect(validateTask({ status: 'blocked', priority: 'high' }, { partial: true }).value).toEqual({ status: 'blocked', priority: 'high' });
     expect(validateTask({ status: 'in_progress' }, { partial: true }).error).toBe('Invalid status');
     expect(validateTask({ priority: 'urgent' }, { partial: true }).error).toBe('Invalid priority');
+  });
+
+  it('takes "chased" only as a real boolean', () => {
+    expect(validateTask({ chased: true }, { partial: true }).value).toEqual({ chased: true });
+    expect(validateTask({ chased: 'yes' }, { partial: true }).error).toBe('chased must be true or false');
   });
 
   it('takes a chase date and a plan date as dates or null', () => {
@@ -53,7 +58,7 @@ describe('validateTask subtasks', () => {
 
   it('refuses an impossible date on a subtask in a new task', () => {
     expect(validateTask({ title: 'T', subtasks: [{ title: 'x', target_date: '2026-13-01' }] }).error)
-      .toBe('Due date must be YYYY-MM-DD');
+      .toBe('Step date must be YYYY-MM-DD');
   });
 
   it('refuses a blank subtask title rather than creating an empty row', () => {
@@ -102,7 +107,7 @@ describe('validateSubtaskPatch', () => {
   });
 
   it('refuses a date that does not exist', () => {
-    expect(validateSubtaskPatch({ target_date: '2026-02-30' }).error).toBe('Due date must be YYYY-MM-DD');
+    expect(validateSubtaskPatch({ target_date: '2026-02-30' }).error).toBe('Step date must be YYYY-MM-DD');
   });
 
   it('refuses renaming a subtask to blank', () => {

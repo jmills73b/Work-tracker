@@ -1,23 +1,22 @@
-// Teams are one shared list of labels; each person sees only how many of their own
-// tasks carry each one.
-export async function listTeams(env, userId = null) {
+// Teams are each person's own labels (migrations/0014): every query is scoped to the user.
+export async function listTeams(env, userId) {
   const { results } = await env.DB.prepare(
-    `SELECT tm.id, tm.name, (SELECT COUNT(*) FROM tasks t WHERE t.team_id = tm.id AND t.user_id = ?) AS task_count
-     FROM teams tm ORDER BY tm.position, tm.name COLLATE NOCASE`,
+    `SELECT tm.id, tm.name, (SELECT COUNT(*) FROM tasks t WHERE t.team_id = tm.id AND t.user_id = tm.user_id) AS task_count
+     FROM teams tm WHERE tm.user_id = ? ORDER BY tm.position, tm.name COLLATE NOCASE`,
   ).bind(userId).all();
   return results;
 }
 
-export function findTeam(env, id) {
-  return env.DB.prepare('SELECT id, name FROM teams WHERE id = ?').bind(id).first();
+export function findTeam(env, userId, id) {
+  return env.DB.prepare('SELECT id, name FROM teams WHERE id = ? AND user_id = ?').bind(id, userId).first();
 }
 
-// null when the name is taken (names are unique, ignoring case).
-export async function createTeam(env, name) {
+// null when the user already has a team of that name (ignoring case).
+export async function createTeam(env, userId, name) {
   try {
     await env.DB.prepare(
-      'INSERT INTO teams (name, position) VALUES (?, (SELECT COALESCE(MAX(position) + 1, 0) FROM teams))',
-    ).bind(name).run();
+      'INSERT INTO teams (user_id, name, position) VALUES (?, ?, (SELECT COALESCE(MAX(position) + 1, 0) FROM teams WHERE user_id = ?))',
+    ).bind(userId, name, userId).run();
     return true;
   } catch (e) {
     if (/UNIQUE/i.test(String(e.message))) return null;
@@ -25,10 +24,10 @@ export async function createTeam(env, name) {
   }
 }
 
-// false when no such team; null when the new name is taken.
-export async function renameTeam(env, id, name) {
+// false when no such team of theirs; null when the new name is taken.
+export async function renameTeam(env, userId, id, name) {
   try {
-    const { meta } = await env.DB.prepare('UPDATE teams SET name = ? WHERE id = ?').bind(name, id).run();
+    const { meta } = await env.DB.prepare('UPDATE teams SET name = ? WHERE id = ? AND user_id = ?').bind(name, id, userId).run();
     return meta.changes > 0;
   } catch (e) {
     if (/UNIQUE/i.test(String(e.message))) return null;
@@ -36,12 +35,11 @@ export async function renameTeam(env, id, name) {
   }
 }
 
-// Tasks and templates on the team become "no team", then the team goes, atomically.
-export async function deleteTeam(env, id) {
+// Their tasks on the team become "no team", then the team goes, atomically.
+export async function deleteTeam(env, userId, id) {
   const results = await env.DB.batch([
-    env.DB.prepare('UPDATE tasks SET team_id = NULL WHERE team_id = ?').bind(id),
-    env.DB.prepare('UPDATE templates SET team_id = NULL WHERE team_id = ?').bind(id),
-    env.DB.prepare('DELETE FROM teams WHERE id = ?').bind(id),
+    env.DB.prepare('UPDATE tasks SET team_id = NULL WHERE team_id = ? AND user_id = ?').bind(id, userId),
+    env.DB.prepare('DELETE FROM teams WHERE id = ? AND user_id = ?').bind(id, userId),
   ]);
-  return results[2].meta.changes > 0;
+  return results[1].meta.changes > 0;
 }

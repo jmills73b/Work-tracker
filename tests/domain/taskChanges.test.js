@@ -26,14 +26,14 @@ describe('planTaskChanges', () => {
     expect(log).toEqual([
       'Status: Open → Done',
       'Marked High',
-      'Due: none → 2026-10-10',
+      'Deadline: none → 2026-10-10',
     ]);
     expect(planTaskChanges(task({ priority: 'high' }), { priority: 'medium' }, NOW).log).toEqual(['High removed']);
   });
 
-  it('logs a cleared due date as "none", not as "null"', () => {
+  it('logs a cleared deadline as "none", not as "null"', () => {
     expect(planTaskChanges(task({ target_date: '2026-10-10' }), { target_date: null }, NOW).log)
-      .toEqual(['Due: 2026-10-10 → none']);
+      .toEqual(['Deadline: 2026-10-10 → none']);
   });
 
   it('does not log title or description edits to the timeline', () => {
@@ -42,16 +42,23 @@ describe('planTaskChanges', () => {
 });
 
 describe('Waiting and its chase date', () => {
-  it('logs the chase date when a task starts waiting', () => {
-    const { changes, log } = planTaskChanges(task(), { status: 'blocked', waiting_until: '2026-10-05' }, NOW);
-    expect(changes).toMatchObject({ status: 'blocked', waiting_until: '2026-10-05' });
-    expect(log[0]).toBe('Status: Open → Waiting');
-    expect(log.join('\n')).toMatch(/Chase on/);
+  it('logs the chase day (the task\'s when) when a task starts waiting', () => {
+    const { changes, log } = planTaskChanges(task(), { status: 'blocked', planned_on: '2026-10-05' }, NOW);
+    expect(changes).toMatchObject({ status: 'blocked', planned_on: '2026-10-05' });
+    expect(log).toEqual(['Status: Open → Waiting', 'Chase on 2026-10-05']);
   });
 
-  it('clears the chase date when the task stops waiting', () => {
-    const { changes } = planTaskChanges(task({ status: 'blocked', waiting_until: '2026-10-05' }), { status: 'todo' }, NOW);
-    expect(changes.waiting_until).toBeNull();
+  it('logs a chase, never stores "chased", and counts even when the day is unchanged', () => {
+    const waiting = task({ status: 'blocked', planned_on: '2026-10-03' });
+    const again = planTaskChanges(waiting, { planned_on: '2026-10-05', chased: true }, NOW);
+    expect(again.changes).toEqual({ planned_on: '2026-10-05', updated_at: NOW });
+    expect(again.log).toEqual(['Chased · next chase 2026-10-05']);
+    const same = planTaskChanges(waiting, { planned_on: '2026-10-03', chased: true }, NOW);
+    expect([same.changes, same.log]).toEqual([{ updated_at: NOW }, ['Chased · next chase 2026-10-03']]);
+  });
+
+  it('does not log moving an open task to another day', () => {
+    expect(planTaskChanges(task(), { planned_on: '2026-10-05' }, NOW).log).toEqual([]);
   });
 
   it('reads an old In progress status as Open in the log', () => {

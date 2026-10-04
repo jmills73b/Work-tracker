@@ -10,7 +10,7 @@ export const get = (env, user) => list(env, user);
 export async function create(request, env, user) {
   const { value, error } = validateTeamName((await request.json())?.name);
   if (error) return json({ error }, 400);
-  if ((await teamsRepo.createTeam(env, value)) === null) return json({ error: 'There is already a team with that name' }, 409);
+  if ((await teamsRepo.createTeam(env, user.id, value)) === null) return json({ error: 'There is already a team with that name' }, 409);
   return list(env, user, 201);
 }
 
@@ -18,7 +18,7 @@ export async function rename(request, env, user, rawId) {
   const id = teamId(rawId);
   const { value, error } = validateTeamName((await request.json())?.name);
   if (error) return json({ error }, 400);
-  const outcome = id === null ? false : await teamsRepo.renameTeam(env, id, value);
+  const outcome = id === null ? false : await teamsRepo.renameTeam(env, user.id, id, value);
   if (outcome === null) return json({ error: 'There is already a team with that name' }, 409);
   if (!outcome) return json({ error: 'Team not found' }, 404);
   return list(env, user);
@@ -26,6 +26,6 @@ export async function rename(request, env, user, rawId) {
 
 export async function remove(env, user, rawId) {
   const id = teamId(rawId);
-  if (id === null || !(await teamsRepo.deleteTeam(env, id))) return json({ error: 'Team not found' }, 404);
+  if (id === null || !(await teamsRepo.deleteTeam(env, user.id, id))) return json({ error: 'Team not found' }, 404);
   return list(env, user);
 }

@@ -1,7 +1,7 @@
 // The three views: Today (act), Tasks (find and plan), Review (look back).
 import { addDays, DONE, HIGH, nextMonday, OPEN, STATUS, WAITING } from '../shared/rules.js';
 import { api, notify } from './api.js';
-import { localIso, dueInfo, shortDate } from './dates.js';
+import { dueInfo, localIso, shortDate, whenLabel } from './dates.js';
 import { $, h, icon, toast } from './dom.js';
 import { computeInsights, describeRepeat, filterTasks, planWeek, TODAY_GROUPS } from './model.js';
 import { app, inTeamFilter, state, store, upsert } from './state.js';
@@ -64,7 +64,8 @@ export function setStatusFilter(status) {
 
 // ---------- Rows ----------
 
-const waitingPill = (t) => t.status === WAITING && h('span', { class: 'pill status-blocked', text: t.waiting_until ? `Waiting · chase ${shortDate(t.waiting_until)}` : 'Waiting' });
+const chaseDay = (t) => t.planned_on ?? t.waiting_until;
+const waitingPill = (t) => t.status === WAITING && h('span', { class: 'pill status-blocked', text: chaseDay(t) ? `Waiting · chase ${shortDate(chaseDay(t))}` : 'Waiting' });
 
 function stepChip(t) {
   const total = t.subtask_total || 0;
@@ -73,11 +74,25 @@ function stepChip(t) {
   return h('span', { class: `subtask-chip${done === total ? ' complete' : ''}`, title: `${done} of ${total} steps done` }, icon('steps', 14), `${done}/${total}`);
 }
 
-// Today only lists dated or planned work, so "No date" there is noise.
+// The right-hand date: when it was done; else the deadline, coloured by urgency; else
+// the day you mean to act, in plain words. Nothing at all when there is no date: absence
+// needs no label. `quiet` (Today) leaves out a "when" of today, which the group says.
 function dueLabel(t, quiet) {
-  if (quiet && !t.target_date) return h('span', { class: 'due' });
-  const d = dueInfo(t);
-  return h('span', { class: `due ${d.cls}`, title: d.title, text: d.label });
+  if (t.status === DONE) return h('span', { class: 'due muted', text: t.completed_at ? `Done ${shortDate(t.completed_at)}` : '' });
+  // On Today a task further on sits where its when puts it, so say that day, unless its
+  // deadline has already passed.
+  const today = localIso();
+  if (quiet && t.status !== WAITING && t.planned_on > today && !(t.target_date && t.target_date < today)) {
+    return h('span', { class: 'due when', title: t.target_date ? `Deadline ${shortDate(t.target_date)}` : '', text: whenLabel(t.planned_on) });
+  }
+  if (t.target_date) {
+    const d = dueInfo(t);
+    return h('span', { class: `due ${d.cls}`, title: `Deadline ${shortDate(t.target_date)}`, text: d.label });
+  }
+  if (t.status !== WAITING && t.planned_on && !(quiet && t.planned_on <= today)) {
+    return h('span', { class: 'due when', title: `Planned for ${shortDate(t.planned_on)}`, text: whenLabel(t.planned_on) });
+  }
+  return h('span', { class: 'due' });
 }
 
 const repeatMark = (t) => t.recurrence && h('span', { class: 'repeat-mark', title: `Repeats: ${describeRepeat(t.recurrence)}`, 'aria-label': `Repeats ${describeRepeat(t.recurrence)}` }, icon('repeat', 13));
@@ -168,38 +183,48 @@ function rowMenuButton(item) {
   return h('button', {
     type: 'button',
     class: 'icon-btn row-menu-btn',
-    title: 'Reschedule or plan',
-    'aria-label': `Reschedule: ${name}`,
+    title: 'Move to another day',
+    'aria-label': `Move: ${name}`,
     onclick: (e) => { e.stopPropagation(); openRowMenu(item); },
   }, icon('clock', 16));
 }
 
 let menuItem = null;
 
+// One tap moves a task's "when" (planned_on), never its deadline. A Waiting task's when
+// is its chase day, so its menu is about chasing. A step has just its own date.
 function openRowMenu(item) {
   menuItem = item;
   const today = localIso();
-  const isTask = item.kind === 'task';
   const t = item.task;
-  $('#row-menu-title').textContent = isTask ? t.title : item.step.title;
-  const due = (date) => () => { closeRowMenu(); setDue(item, date); };
-  const actions = [
-    h('button', { type: 'button', class: 'btn', onclick: due(addDays(today, 1)) }, 'Due tomorrow'),
-    h('button', { type: 'button', class: 'btn', onclick: due(nextMonday(today)) }, 'Due next week'),
-  ];
-  if (isTask) {
-    const planned = t.planned_on && t.planned_on <= today;
-    actions.unshift(h('button', {
-      type: 'button',
-      class: 'btn',
-      onclick: () => { closeRowMenu(); patchTask(t.id, { planned_on: planned ? null : today }); },
-    }, planned ? "Remove from today's plan" : "Add to today's plan"));
-    actions.push(t.status === WAITING
-      ? h('button', { type: 'button', class: 'btn', onclick: () => { closeRowMenu(); patchTask(t.id, { status: OPEN }); } }, 'No longer waiting')
-      : h('button', { type: 'button', class: 'btn', onclick: () => { closeRowMenu(); patchTask(t.id, { status: WAITING, waiting_until: addDays(today, 2) }); } }, 'Waiting · chase in 2 days'));
+  const act = (fn) => () => { closeRowMenu(); fn(); };
+  const btn = (text, fn) => h('button', { type: 'button', class: 'btn', onclick: act(fn) }, text);
+  let actions;
+  let pickLabel = 'Or pick a day';
+  if (item.kind === 'step') {
+    actions = [
+      btn('Tomorrow', () => setDay(item, addDays(today, 1))),
+      btn('Next week', () => setDay(item, nextMonday(today))),
+    ];
+  } else if (t.status === WAITING) {
+    pickLabel = 'Or pick a chase day';
+    actions = [
+      btn('Chased · again in 2 days', () => patchTask(t.id, { planned_on: addDays(today, 2), chased: true })),
+      btn('Got it · back to Open, today', () => patchTask(t.id, { status: OPEN, planned_on: today })),
+    ];
+  } else {
+    actions = [
+      !(t.planned_on && t.planned_on <= today) && btn('Today', () => setDay(item, today)),
+      btn('Tomorrow', () => setDay(item, addDays(today, 1))),
+      btn('Next week', () => setDay(item, nextMonday(today))),
+      btn('Waiting · chase in 2 days', () => patchTask(t.id, { status: WAITING, planned_on: addDays(today, 2) })),
+      t.planned_on && btn('No set day', () => setDay(item, null)),
+    ].filter(Boolean);
   }
+  $('#row-menu-title').textContent = item.kind === 'step' ? item.step.title : t.title;
   $('#row-menu-actions').replaceChildren(...actions);
-  $('#row-menu-date').value = (isTask ? t.target_date : item.step.target_date) || '';
+  $('#row-menu-pick-label').textContent = pickLabel;
+  $('#row-menu-date').value = (item.kind === 'step' ? item.step.target_date : t.planned_on) || '';
   $('#row-menu').showModal();
 }
 
@@ -211,11 +236,11 @@ export function pickRowMenuDate(value) {
   if (!menuItem || !value) return;
   const item = menuItem;
   closeRowMenu();
-  setDue(item, value);
+  setDay(item, value);
 }
 
-function setDue(item, date) {
-  if (item.kind === 'task') return patchTask(item.task.id, { target_date: date });
+function setDay(item, date) {
+  if (item.kind === 'task') return patchTask(item.task.id, { planned_on: date });
   return patchStepOf(item.task.id, item.step.id, { target_date: date }, `Moved to ${shortDate(date)}`);
 }
 
@@ -229,7 +254,7 @@ function renderReview(root) {
   const pct = (x) => `${Math.round(x * 100)}%`;
   const tiles = [
     { label: 'Done, last 30 days', value: String(ins.done30) },
-    { label: 'On time, last 90 days', value: ins.onTimeRate == null ? '–' : pct(ins.onTimeRate), note: ins.dated ? `of ${ins.dated} with a due date` : 'no dated tasks done yet' },
+    { label: 'On time, last 90 days', value: ins.onTimeRate == null ? '–' : pct(ins.onTimeRate), note: ins.dated ? `of ${ins.dated} with a deadline` : 'no tasks with a deadline done yet' },
     { label: 'Overdue now', value: String(ins.overdue), alert: ins.overdue > 0 },
     { label: 'Waiting', value: String(ins.waiting) },
   ];
@@ -304,7 +329,7 @@ export async function patchTask(id, changes) {
     // Undo puts back the state it had (and a Waiting task's chase date). Not offered when
     // a repeating task has already made its next one.
     if (changes.status === DONE && !detail.next_task) {
-      const back = before.status === WAITING ? { status: WAITING, waiting_until: before.waiting_until ?? null } : { status: before.status };
+      const back = { status: before.status, planned_on: before.planned_on ?? null };
       toast(`Done: ${before.title}`, 'info', { label: 'Undo', run: () => patchTask(id, back) });
     }
   } catch (err) {

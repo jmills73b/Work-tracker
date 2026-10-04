@@ -68,9 +68,14 @@ describe('nextOccurrence', () => {
     ];
     expect(nextOccurrence(task, subtasks, '2026-10-29')).toEqual({
       title: 'Board pack', description: 'd', priority: 'high', team_id: 2, recurrence: 'monthly:1', status: 'todo',
-      target_date: '2026-11-30',
+      target_date: '2026-11-30', planned_on: null,
       subtasks: [{ title: 'Collect figures', target_date: '2026-11-23' }, { title: 'Send', target_date: null }],
     });
+  });
+
+  it('repeats from the "when" of a task with no deadline, and lands the new date there too', () => {
+    const task = { title: '1:1 prep', priority: 'medium', recurrence: 'weekly:1', target_date: null, planned_on: '2026-10-05', status: 'done' };
+    expect(nextOccurrence(task, [], '2026-10-05')).toMatchObject({ target_date: null, planned_on: '2026-10-12' });
   });
 });
 

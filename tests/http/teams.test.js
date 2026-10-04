@@ -27,15 +27,24 @@ describe('team labels', () => {
     expect([res.status, (await res.json()).error]).toEqual([409, 'There is already a team with that name']);
   });
 
-  it('moves tasks (and any old templates) to "no team" and deletes the team in one batch', async () => {
+  it('removes only your own team, moving only your tasks to "no team", in one batch', async () => {
     const db = fakeDb({ first: [session(0)] });
     await route(req('/api/teams/2', undefined, 'DELETE'), { DB: db });
     const batch = db.calls.find((c) => c.method === 'batch').statements.map((s) => [s.sql, s.params]);
     expect(batch).toEqual([
-      ['UPDATE tasks SET team_id = NULL WHERE team_id = ?', [2]],
-      ['UPDATE templates SET team_id = NULL WHERE team_id = ?', [2]],
-      ['DELETE FROM teams WHERE id = ?', [2]],
+      ['UPDATE tasks SET team_id = NULL WHERE team_id = ? AND user_id = ?', [2, 1]],
+      ['DELETE FROM teams WHERE id = ? AND user_id = ?', [2, 1]],
     ]);
+  });
+
+  it('adds and renames teams as your own', async () => {
+    const db = fakeDb({ first: [session(0)] });
+    await route(req('/api/teams', { name: 'Platform' }), { DB: db });
+    await route(req('/api/teams/3', { name: 'Infra' }, 'PATCH'), { DB: db });
+    const insert = db.calls.find((c) => c.sql?.startsWith('INSERT INTO teams'));
+    expect(insert.params).toEqual([1, 'Platform', 1]);
+    const rename = db.calls.find((c) => c.sql?.startsWith('UPDATE teams SET name'));
+    expect(rename.params).toEqual(['Infra', 3, 1]);
   });
 
   it('answers 404 for a team id that is not a number, without touching the database', async () => {
@@ -44,12 +53,12 @@ describe('team labels', () => {
     expect(db.calls.some((c) => c.method === 'batch')).toBe(false);
   });
 
-  it("counts only the signed-in user's tasks on each team", async () => {
+  it("lists only the signed-in user's teams", async () => {
     const db = fakeDb({ first: [session(0)], all: [['FROM teams tm', [{ id: 1, name: 'Dev Ops', task_count: 0 }]]] });
     const res = await route(new Request('https://tracker.test/api/teams', { headers: { Cookie: `session=${TOKEN}` } }), { DB: db });
     expect((await res.json()).teams.map((t) => t.name)).toEqual(['Dev Ops']);
     const list = db.calls.find((c) => c.sql?.includes('FROM teams tm'));
-    expect(list.sql).toMatch(/t\.user_id = \?/);
+    expect(list.sql).toMatch(/tm\.user_id = \?/);
     expect(list.params).toEqual([1]);
   });
 });

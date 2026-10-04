@@ -52,16 +52,23 @@ export function validateTask(input, { partial = false } = {}) {
     const v = input.target_date;
     if (v === null || v === '') out.target_date = null;
     else if (typeof v === 'string' && validDate(v)) out.target_date = v;
-    else return { error: 'Due date must be YYYY-MM-DD' };
+    else return { error: 'Deadline must be YYYY-MM-DD' };
   }
 
-  // Waiting's "chase on" date, and the day the task is planned for (the daily plan).
+  // planned_on is the task's "when": the day you'll act on it, or, while it is Waiting,
+  // the day to chase it. waiting_until is from before 0014 and no longer used.
   for (const key of ['waiting_until', 'planned_on']) {
     if (!(key in input)) continue;
     const v = input[key];
     if (v === null || v === '') out[key] = null;
     else if (typeof v === 'string' && validDate(v)) out[key] = v;
     else return { error: 'Dates must be YYYY-MM-DD' };
+  }
+
+  // "I chased them": logged, never stored (planTaskChanges takes it out).
+  if ('chased' in input) {
+    if (typeof input.chased !== 'boolean') return { error: 'chased must be true or false' };
+    out.chased = input.chased;
   }
 
   if ('recurrence' in input) {
@@ -97,7 +104,7 @@ function subtaskTitle(value) {
 function optionalDate(v) {
   if (v === null || v === '') return { value: null };
   if (typeof v === 'string' && validDate(v)) return { value: v };
-  return { error: 'Due date must be YYYY-MM-DD' };
+  return { error: 'Step date must be YYYY-MM-DD' };
 }
 
 export function validateSubtaskCreate(input) {

@@ -103,25 +103,38 @@ describe('planWeek (the Today view)', () => {
     expect(ids(g.week)).toEqual(['soon']);
   });
 
-  it('leads with the plan, carrying over an unfinished one from an earlier day, and shows each task once', () => {
+  it('places a task by its when, carrying an unfinished one over, and shows each task once', () => {
     const tasks = [
       task({ id: 'planned', planned_on: '2026-10-03', target_date: '2026-10-03' }),
       task({ id: 'carried', planned_on: '2026-10-01' }),
-      task({ id: 'future', planned_on: '2026-10-05', target_date: '2026-10-04' }),
+      task({ id: 'soon', planned_on: '2026-10-05' }),
     ];
     const g = planWeek(tasks, TODAY);
-    expect(ids(g.plan)).toEqual(['planned', 'carried']);
+    expect(ids(g.plan)).toEqual(['carried', 'planned']); // oldest first
     expect(ids(g.today)).toEqual([]);
-    expect(ids(g.week)).toEqual(['future']);
+    expect(ids(g.week)).toEqual(['soon']);
   });
 
-  it('lists Waiting tasks to chase once their chase date comes, and by due date until then', () => {
+  it('keeps a task moved to a later day out of sight until then, even past its deadline', () => {
+    // Moving it was a decision to look at it then; the deadline still shows red when it returns.
     const tasks = [
-      task({ id: 'chase', status: 'blocked', waiting_until: '2026-10-03', target_date: '2026-10-01' }),
-      task({ id: 'later', status: 'blocked', waiting_until: '2026-10-06', target_date: '2026-10-04' }),
+      task({ id: 'snoozed', planned_on: '2026-10-05', target_date: '2026-10-01' }),
+      task({ id: 'far', planned_on: '2026-10-30', target_date: '2026-10-02' }),
     ];
     const g = planWeek(tasks, TODAY);
-    expect(ids(g.chase)).toEqual(['chase']);
+    expect(ids(g.overdue)).toEqual([]);
+    expect(ids(g.week)).toEqual(['snoozed']);
+    expect(Object.values(g).flat().map((i) => i.task.id)).not.toContain('far');
+  });
+
+  it('lists Waiting tasks to chase once their chase day comes, and by deadline until then', () => {
+    const tasks = [
+      task({ id: 'chase', status: 'blocked', planned_on: '2026-10-03', target_date: '2026-10-01' }),
+      task({ id: 'later', status: 'blocked', planned_on: '2026-10-06', target_date: '2026-10-04' }),
+      task({ id: 'legacy', status: 'blocked', waiting_until: '2026-10-02' }),
+    ];
+    const g = planWeek(tasks, TODAY);
+    expect(ids(g.chase)).toEqual(['legacy', 'chase']);
     expect(ids(g.overdue)).toEqual([]);
     expect(ids(g.week)).toEqual(['later']);
   });
@@ -142,17 +155,19 @@ describe('planWeek (the Today view)', () => {
 });
 
 describe('planCandidates (the daily plan)', () => {
-  it('offers what is planned, due, to chase or High, planned ones first, and nothing done', () => {
+  it('offers open tasks planned, with a deadline by then, or High; planned first; never Waiting, done or moved later', () => {
     const tasks = [
       task({ id: 'due', target_date: '2026-10-04' }),
       task({ id: 'planned', planned_on: '2026-10-04', target_date: '2026-10-20' }),
-      task({ id: 'chase', status: 'blocked', waiting_until: '2026-10-04' }),
+      task({ id: 'carried', planned_on: '2026-10-02' }),
+      task({ id: 'chase', status: 'blocked', planned_on: '2026-10-04' }),
       task({ id: 'high-undated', priority: 'high' }),
       task({ id: 'high-far', priority: 'high', target_date: '2026-12-01' }),
+      task({ id: 'moved-later', planned_on: '2026-10-09', target_date: '2026-10-03' }),
       task({ id: 'later', target_date: '2026-10-20' }),
       task({ id: 'done', status: 'done', target_date: '2026-10-04' }),
     ];
-    expect(planCandidates(tasks, '2026-10-04').map((t) => t.id)).toEqual(['planned', 'due', 'high-undated', 'chase']);
+    expect(planCandidates(tasks, '2026-10-04').map((t) => t.id)).toEqual(['planned', 'carried', 'due', 'high-undated']);
   });
 });
 
@@ -213,7 +228,7 @@ describe('parseQuickAdd', () => {
 
   it('picks out a weekday, a priority and a team, leaving the title', () => {
     expect(parseQuickAdd('Board deck fri !high #RDH', SAT, TEAMS))
-      .toEqual({ title: 'Board deck', target_date: '2026-10-09', priority: 'high', team_id: 2, team_name: 'RDH' });
+      .toEqual({ title: 'Board deck', date: '2026-10-09', deadline: false, priority: 'high', team_id: 2, team_name: 'RDH' });
   });
 
   it('finds a team however its name is typed', () => {
@@ -227,46 +242,46 @@ describe('parseQuickAdd', () => {
   });
 
   it('reads numeric dates as day/month, the UK way', () => {
-    expect(parseQuickAdd('Pay invoice 12/10', SAT).target_date).toBe('2026-10-12');
+    expect(parseQuickAdd('Pay invoice 12/10', SAT).date).toBe('2026-10-12');
   });
 
   it('rolls a day and month that has already passed into next year', () => {
-    expect(parseQuickAdd('Renew insurance 2 Jan', SAT).target_date).toBe('2027-01-02');
+    expect(parseQuickAdd('Renew insurance 2 Jan', SAT).date).toBe('2027-01-02');
   });
 
   it('leaves an impossible date in the title instead of guessing', () => {
-    expect(parseQuickAdd('Fix 31/02 thing', SAT)).toMatchObject({ title: 'Fix 31/02 thing', target_date: null });
+    expect(parseQuickAdd('Fix 31/02 thing', SAT)).toMatchObject({ title: 'Fix 31/02 thing', date: null });
   });
 
   it("does not mistake a name or a possessive for a date", () => {
     // "tom" and "today's" were the obvious false positives.
-    expect(parseQuickAdd('Call Tom tomorrow', SAT)).toMatchObject({ title: 'Call Tom', target_date: '2026-10-04' });
-    expect(parseQuickAdd("Today's standup notes", SAT)).toMatchObject({ title: "Today's standup notes", target_date: null });
+    expect(parseQuickAdd('Call Tom tomorrow', SAT)).toMatchObject({ title: 'Call Tom', date: '2026-10-04' });
+    expect(parseQuickAdd("Today's standup notes", SAT)).toMatchObject({ title: "Today's standup notes", date: null });
   });
 
   it('reads "fri" as the coming Friday, and as today on a Friday', () => {
-    expect(parseQuickAdd('x fri', MON).target_date).toBe('2026-10-09');
-    expect(parseQuickAdd('x fri', new Date(2026, 9, 9, 8)).target_date).toBe('2026-10-09');
+    expect(parseQuickAdd('x fri', MON).date).toBe('2026-10-09');
+    expect(parseQuickAdd('x fri', new Date(2026, 9, 9, 8)).date).toBe('2026-10-09');
   });
 
   it('reads "next fri" as the Friday of next week', () => {
-    expect(parseQuickAdd('x next fri', MON).target_date).toBe('2026-10-16');
-    expect(parseQuickAdd('x next fri', SAT).target_date).toBe('2026-10-09');
+    expect(parseQuickAdd('x next fri', MON).date).toBe('2026-10-16');
+    expect(parseQuickAdd('x next fri', SAT).date).toBe('2026-10-09');
   });
 
   it('understands relative phrases', () => {
-    expect(parseQuickAdd('x in 2 weeks', SAT).target_date).toBe('2026-10-17');
-    expect(parseQuickAdd('x next week', SAT).target_date).toBe('2026-10-05');
-    expect(parseQuickAdd('x eom', SAT).target_date).toBe('2026-10-31');
-    expect(parseQuickAdd('x eow', MON).target_date).toBe('2026-10-09');
+    expect(parseQuickAdd('x in 2 weeks', SAT).date).toBe('2026-10-17');
+    expect(parseQuickAdd('x next week', SAT).date).toBe('2026-10-05');
+    expect(parseQuickAdd('x eom', SAT).date).toBe('2026-10-31');
+    expect(parseQuickAdd('x eow', MON).date).toBe('2026-10-09');
   });
 
   it('clamps "in 1 month" from the 31st to the end of a shorter month', () => {
-    expect(parseQuickAdd('x in 1 month', new Date(2026, 0, 31, 9)).target_date).toBe('2026-02-28');
+    expect(parseQuickAdd('x in 1 month', new Date(2026, 0, 31, 9)).date).toBe('2026-02-28');
   });
 
   it('uses the first date and priority it finds and leaves later ones in the title', () => {
-    expect(parseQuickAdd('Move fri to mon !low !high', SAT)).toMatchObject({ title: 'Move to mon !high', target_date: '2026-10-09', priority: 'medium' });
+    expect(parseQuickAdd('Move fri to mon !low !high', SAT)).toMatchObject({ title: 'Move to mon !high', date: '2026-10-09', priority: 'medium' });
   });
 
   it('gives an empty title for a line that is only tokens, so nothing is saved', () => {
@@ -275,6 +290,12 @@ describe('parseQuickAdd', () => {
 
   it('ignores #words when there are no teams at all', () => {
     expect(parseQuickAdd('Plan #RDH', SAT)).toMatchObject({ title: 'Plan #RDH', team_id: null });
+  });
+
+  it('reads a day as when to do it, and "by" or "due" a day as a deadline', () => {
+    expect(parseQuickAdd('Call Sam fri', SAT)).toMatchObject({ title: 'Call Sam', date: '2026-10-09', deadline: false });
+    expect(parseQuickAdd('Board pack by fri', SAT)).toMatchObject({ title: 'Board pack', date: '2026-10-09', deadline: true });
+    expect(parseQuickAdd('Invoice due 12/10', SAT)).toMatchObject({ title: 'Invoice', date: '2026-10-12', deadline: true });
   });
 
   it('reads the old priority marks onto the High flag', () => {

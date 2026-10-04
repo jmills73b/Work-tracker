@@ -71,7 +71,7 @@ describe('parseTimes', () => {
 describe('collectDue', () => {
   const TODAY = '2026-10-03';
   const tasks = [
-    { title: 'Contract', status: 'blocked', priority: 'high', target_date: '2026-10-01', waiting_until: '2026-10-03', subtasks: [
+    { title: 'Contract', status: 'blocked', priority: 'high', target_date: '2026-10-01', planned_on: '2026-10-03', subtasks: [
       { title: 'Redline', done: 1, target_date: '2026-09-30' },
       { title: 'CFO sign', done: 0, target_date: '2026-10-03' },
     ] },
@@ -79,7 +79,7 @@ describe('collectDue', () => {
     { title: 'Offsite', status: 'todo', priority: 'medium', target_date: '2026-10-04', subtasks: [] },
     { title: 'Old report', status: 'done', priority: 'high', target_date: '2026-09-01', subtasks: [] },
     { title: 'Undated', status: 'todo', priority: 'high', target_date: null, subtasks: [] },
-    { title: 'Supplier reply', status: 'blocked', priority: 'medium', target_date: null, waiting_until: '2026-10-05', subtasks: [] },
+    { title: 'Supplier reply', status: 'blocked', priority: 'medium', target_date: null, planned_on: '2026-10-05', subtasks: [] },
   ];
 
   it('collects overdue and due-today items from tasks and open subtasks, skipping done ones', () => {
@@ -90,6 +90,18 @@ describe('collectDue', () => {
 
   it('lists Waiting tasks whose chase date has come, and not ones still to come', () => {
     expect(collectDue(tasks, TODAY).chase.map((i) => i.title)).toEqual(['Contract']);
+  });
+
+  it('follows a task\'s when: planned today counts as today; moved later keeps quiet, deadline or not', () => {
+    const due = collectDue([
+      { title: 'Planned', status: 'todo', priority: 'medium', target_date: null, planned_on: '2026-10-02', subtasks: [] },
+      { title: 'Snoozed', status: 'todo', priority: 'medium', target_date: '2026-10-01', planned_on: '2026-10-08', subtasks: [] },
+      { title: 'Late but planned', status: 'todo', priority: 'medium', target_date: '2026-10-01', planned_on: '2026-10-03', subtasks: [] },
+      { title: 'Old chase', status: 'blocked', priority: 'medium', target_date: null, waiting_until: '2026-10-02', subtasks: [] },
+    ], TODAY);
+    expect(due.dueToday.map((i) => i.title)).toEqual(['Planned']);
+    expect(due.overdue.map((i) => i.title)).toEqual(['Late but planned']);
+    expect(due.chase.map((i) => i.title)).toEqual(['Old chase']); // from before 0014
   });
 
   it('warns about tomorrow only for High tasks', () => {

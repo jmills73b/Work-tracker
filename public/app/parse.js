@@ -29,8 +29,10 @@ function qaNextYearly(today, m, d) {
 
 // `teams` is [{ id, name }]: "#RDH", "#devops" or "#Dev_Ops" pick a team; a #word that
 // names no team is left in the title, where the preview shows it wasn't understood.
+// A date is the task's "when" (the day you'll act), unless it follows "by" or "due":
+// "Report by fri" sets a deadline instead (deadline: true).
 export function parseQuickAdd(text, today = new Date(), teams = []) {
-  const out = { title: '', target_date: null, priority: null, team_id: null, team_name: null };
+  const out = { title: '', date: null, deadline: false, priority: null, team_id: null, team_name: null };
   const qaKey = (name) => String(name).toLowerCase().replace(/[\s_-]+/g, '');
   let rest = ` ${String(text).replace(/\s+/g, ' ')} `;
   const take = (re, fn) => {
@@ -40,10 +42,11 @@ export function parseQuickAdd(text, today = new Date(), teams = []) {
     });
   };
   const date = (re, fn) => take(re, (...m) => {
-    if (out.target_date) return false;
+    if (out.date) return false;
     const iso = fn(...m);
     if (!iso) return false;
-    out.target_date = iso;
+    out.date = iso;
+    out.deadline = /^\s(?:by|due)\s/i.test(m[0]);
     return true;
   });
 

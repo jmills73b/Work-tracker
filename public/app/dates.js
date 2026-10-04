@@ -20,6 +20,7 @@ export function shortDate(iso, today = new Date()) {
 
 export const weekdayDate = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 
+// A task's deadline (target_date), in words, coloured by urgency.
 export function dueInfo(t, today = new Date()) {
   if (!t.target_date) return { label: 'No date', cls: 'muted' };
   const n = daysUntil(t.target_date, today);
@@ -45,3 +46,12 @@ export function relTime(iso) {
 }
 
 export const fullTime = (iso) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+
+// A day you mean to act ("when"): plain words, never red. Today and earlier read "Today".
+export function whenLabel(iso, today = new Date()) {
+  const n = daysUntil(iso, today);
+  if (n <= 0) return 'Today';
+  if (n === 1) return 'Tomorrow';
+  return n <= 6 ? new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short' }) : shortDate(iso, today);
+}
+

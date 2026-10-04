@@ -33,7 +33,7 @@ test('a task with steps can be created, edited without a save button, logged, co
   // Fields save as you go: the summary line opens them, and a change is logged at once.
   await page.locator('#task-summary').click();
   await page.locator('#task-form [name=target_date]').fill('2030-02-01');
-  await expect(page.locator('#timeline')).toContainText('Due: none → 2030-02-01');
+  await expect(page.locator('#timeline')).toContainText('Deadline: none → 2030-02-01');
   // So does the title, a moment after you stop typing.
   const saved = page.waitForResponse((r) => r.request().method() === 'PATCH' && /\/api\/tasks\/[^/]+$/.test(r.url()));
   await page.locator('#task-form [name=title]').fill('Write the Q3 report');

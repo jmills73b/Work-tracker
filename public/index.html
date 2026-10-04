@@ -134,7 +134,7 @@
         <details class="task-fields" id="task-fields">
           <summary class="task-summary" id="task-summary"></summary>
           <div class="field-grid">
-            <label class="field">
+            <label class="field" id="status-field">
               <span>Status</span>
               <select name="status" class="select input">
                 <option value="todo">Open</option>
@@ -142,12 +142,12 @@
                 <option value="done">Done</option>
               </select>
             </label>
-            <label class="field" id="chase-field" hidden>
-              <span>Chase on</span>
-              <input name="waiting_until" type="date" class="input">
+            <label class="field">
+              <span id="when-label">When</span>
+              <input name="planned_on" type="date" class="input">
             </label>
             <label class="field">
-              <span>Due</span>
+              <span>Deadline</span>
               <input name="target_date" type="date" class="input">
             </label>
             <label class="field">
@@ -173,7 +173,7 @@
               <input name="repeat_days" class="input" type="number" min="1" max="365" step="1" value="7" inputmode="numeric">
             </label>
             <label class="check-row high-row">
-              <input type="checkbox" name="high"> <span>High priority</span>
+              <input type="checkbox" name="high"> <span>High</span>
             </label>
           </div>
         </details>
@@ -217,7 +217,7 @@
       <h2 id="row-menu-title" class="row-menu-title"></h2>
       <div class="row-menu-actions" id="row-menu-actions"></div>
       <label class="field row-menu-pick">
-        <span>Or pick a due date</span>
+        <span id="row-menu-pick-label">Or pick a day</span>
         <input type="date" class="input" id="row-menu-date">
       </label>
       <div class="dialog-actions">
@@ -265,7 +265,7 @@
     <form id="quick-form" autocomplete="off">
       <input id="quick-input" class="input quick-input" placeholder="e.g. Board deck fri !high #Leadership" maxlength="300" enterkeyhint="done" aria-label="Quick add a task" aria-describedby="quick-help">
       <div class="quick-preview" id="quick-preview" aria-live="polite"></div>
-      <p class="hint" id="quick-help">Dates: today, tomorrow, fri, next mon, 12 Oct, 12/10, in 3 days, eow · High: !high · Team: #RDH</p>
+      <p class="hint" id="quick-help">When: today, tomorrow, fri, next mon, 12 Oct, in 3 days · Deadline: by fri · High: !high · Team: #RDH</p>
       <div class="dialog-actions">
         <button type="button" class="btn ghost" id="quick-details">Add details…</button>
         <button type="submit" class="btn primary" id="quick-submit">Add task</button>

@@ -25,7 +25,8 @@ export function describeRecurrence(r) {
   return n === 1 ? '1 day after done' : `${n} days after done`;
 }
 
-// The next target date. `today` is the person's local date when they marked it done.
+// The next date. `today` is the person's local date when they marked it done. A task with
+// a deadline repeats from its deadline; one without, from its "when" (planned_on).
 // Weekly and monthly keep their rhythm from the original date (always counted from it,
 // so 31 Jan → 28 Feb → 31 Mar, not 28 Mar) and skip any dates already past, so a task
 // finished late doesn't come back already overdue.
@@ -33,7 +34,7 @@ export function nextTargetDate(task, today) {
   const [kind, raw] = task.recurrence.split(':');
   const n = Number(raw);
   if (kind === 'after') return addDays(today, n);
-  const base = task.target_date || today;
+  const base = task.target_date || task.planned_on || today;
   const step = (k) => (kind === 'weekly' ? addDays(base, 7 * n * k) : addMonths(base, n * k));
   let k = 1;
   while (step(k) <= today) k += 1;
@@ -42,9 +43,11 @@ export function nextTargetDate(task, today) {
 
 // The next occurrence: the same task with the new date, not done, and its subtasks
 // (none ticked) moved by however far the task moved. Subtasks without a date stay without.
+// The new date lands where the old one was: the deadline if it had one, else the when.
 export function nextOccurrence(task, subtasks, today) {
   const target = nextTargetDate(task, today);
-  const shift = daysBetween(task.target_date || today, target);
+  const shift = daysBetween(task.target_date || task.planned_on || today, target);
+  const byDeadline = Boolean(task.target_date) || !task.planned_on;
   return {
     title: task.title,
     description: task.description || '',
@@ -52,7 +55,8 @@ export function nextOccurrence(task, subtasks, today) {
     team_id: task.team_id ?? null,
     recurrence: task.recurrence,
     status: 'todo',
-    target_date: target,
+    target_date: byDeadline ? target : null,
+    planned_on: byDeadline ? null : target,
     subtasks: subtasks.map((st) => ({ title: st.title, target_date: st.target_date ? addDays(st.target_date, shift) : null })),
   };
 }

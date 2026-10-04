@@ -4,7 +4,7 @@ import { route } from '../../src/index.js';
 import { fakeDb } from '../helpers/fakeDb.js';
 
 const TASK = {
-  id: 't1', title: 'Board pack', description: 'Q4 "final"', status: 'blocked', priority: 'high', target_date: '2026-10-09',
+  id: 't1', title: 'Board pack', description: 'Q4 "final"', status: 'blocked', priority: 'high', planned_on: '2026-10-07', target_date: '2026-10-09',
   team_name: 'Leadership', recurrence: null, created_at: '2026-10-01T09:00:00Z', completed_at: null,
   steps: [{ title: 'Draft', done: 1 }, { title: 'Send', done: 0 }],
   log: [{ kind: 'change', note: 'Task created' }, { kind: 'note', note: 'Sent to CFO' }],
@@ -25,8 +25,8 @@ describe('csvField', () => {
 describe('toCsv', () => {
   it('writes one row per task in plain words: state, High, steps done and the last log entry', () => {
     const [head, row] = toCsv([TASK]).split('\r\n');
-    expect(head).toBe('"Title","Status","High","Due","Team","Repeats","Steps done","Steps","Notes","Created","Done on","Last log entry"');
-    expect(row).toBe('"Board pack","Waiting","Yes","2026-10-09","Leadership","","1","2","Q4 ""final""","2026-10-01","","Sent to CFO"');
+    expect(head).toBe('"Title","Status","High","When","Deadline","Team","Repeats","Steps done","Steps","Notes","Created","Done on","Last log entry"');
+    expect(row).toBe('"Board pack","Waiting","Yes","2026-10-07","2026-10-09","Leadership","","1","2","Q4 ""final""","2026-10-01","","Sent to CFO"');
   });
 });
 

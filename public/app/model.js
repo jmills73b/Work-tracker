@@ -7,12 +7,17 @@ export const isOpen = (t) => t.status !== DONE;
 export const isOverdue = (t, today = new Date()) => isOpen(t) && Boolean(t.target_date) && daysUntil(t.target_date, today) < 0;
 
 // ---------- Today ----------
-// Each item is { kind: 'task' | 'step', task, step?, date }. A task appears once: in the
-// plan if planned for today (or carried over from an earlier day), else to chase if
-// waiting and its chase date has come, else by its due date. Steps are listed by their
-// own dates, so a step due today shows even when its task is due next month.
+// Each item is { kind: 'task' | 'step', task, step?, date }. A task appears once, by its
+// "when" (planned_on) if it has one, else by its deadline (target_date):
+//   - Waiting: to chase once its chase day (its when) has come; until then, by deadline.
+//   - Open with a when: today's plan once it comes (unfinished ones carry over), in the
+//     next 7 days before that, and out of sight further off, whatever its deadline: moving
+//     a task to a later day is a decision to look at it then.
+//   - Open with no when: overdue, due today or the next 7 days, by deadline.
+// Steps are listed by their own dates, so a step due today shows even when its task is
+// due next month.
 export const TODAY_GROUPS = [
-  { key: 'plan', label: "Today's plan" },
+  { key: 'plan', label: 'Planned for today' },
   { key: 'chase', label: 'To chase' },
   { key: 'overdue', label: 'Overdue' },
   { key: 'today', label: 'Due today' },
@@ -26,9 +31,13 @@ export function planWeek(tasks, today = new Date()) {
   const groups = Object.fromEntries(TODAY_GROUPS.map((g) => [g.key, []]));
   for (const task of tasks) {
     if (!isOpen(task)) continue;
-    if (task.planned_on && task.planned_on <= todayIso) groups.plan.push({ kind: 'task', task, date: task.target_date });
-    else if (task.status === WAITING && task.waiting_until && task.waiting_until <= todayIso) groups.chase.push({ kind: 'task', task, date: task.waiting_until });
-    else if (task.target_date) {
+    const chaseDay = task.status === WAITING ? task.planned_on ?? task.waiting_until : null;
+    const when = task.status === WAITING ? null : task.planned_on;
+    if (chaseDay && chaseDay <= todayIso) groups.chase.push({ kind: 'task', task, date: chaseDay });
+    else if (when && when <= todayIso) groups.plan.push({ kind: 'task', task, date: task.target_date || when });
+    else if (when) {
+      if (byDate(daysUntil(when, today)) === 'week') groups.week.push({ kind: 'task', task, date: when });
+    } else if (task.target_date) {
       const g = byDate(daysUntil(task.target_date, today));
       if (g) groups[g].push({ kind: 'task', task, date: task.target_date });
     }
@@ -47,17 +56,17 @@ export function planWeek(tasks, today = new Date()) {
 }
 
 // ---------- The daily plan ----------
-// What is worth considering for `day`: anything already planned for it or earlier, due
-// by then, to chase by then, or flagged High and due within a week. Planned first.
+// What is worth considering for `day`: open tasks (not Waiting: chasing has its own place)
+// already planned for it or earlier, with a deadline by then, or flagged High with a
+// deadline within a week or none. Tasks moved to a later day stay out. Planned first.
 export function planCandidates(tasks, day) {
   const soon = addDays(day, 7);
   return tasks
-    .filter((t) => isOpen(t) && ((t.planned_on && t.planned_on <= day)
+    .filter((t) => t.status === OPEN && !(t.planned_on && t.planned_on > day) && ((t.planned_on && t.planned_on <= day)
       || (t.target_date && t.target_date <= day)
-      || (t.status === WAITING && t.waiting_until && t.waiting_until <= day)
       || (t.priority === HIGH && (!t.target_date || t.target_date <= soon))))
     .sort((a, b) => Number(b.planned_on === day) - Number(a.planned_on === day)
-      || (a.target_date || '9999').localeCompare(b.target_date || '9999')
+      || (a.target_date || a.planned_on || '9999').localeCompare(b.target_date || b.planned_on || '9999')
       || (a.priority === HIGH ? 0 : 1) - (b.priority === HIGH ? 0 : 1));
 }
 
@@ -72,7 +81,9 @@ export function filterTasks(tasks, { status = OPEN, q = '', highOnly = false, so
     if (query) return `${t.title}\n${t.description}\n${t.team_name || ''}\n${t.last_note || ''}`.toLowerCase().includes(query);
     return t.status === status;
   });
-  const due = (a, b) => (a.target_date || '9999-99-99').localeCompare(b.target_date || '9999-99-99')
+  // By the nearer of deadline and when; undated last.
+  const day = (t) => [t.target_date, t.planned_on].filter(Boolean).sort()[0] || '9999-99-99';
+  const due = (a, b) => day(a).localeCompare(day(b))
     || (a.priority === HIGH ? 0 : 1) - (b.priority === HIGH ? 0 : 1);
   const doneLast = (a, b) => (a.status === DONE) - (b.status === DONE);
   if (!query && status === DONE) return out.sort((a, b) => (b.completed_at || '').localeCompare(a.completed_at || ''));

@@ -56,7 +56,10 @@ export const isEvening = (time) => time >= EVENING_FROM;
 // What needs attention on `today` (the user's local date). Tasks come with their subtasks
 // attached, as listTasks returns them. Done tasks and done subtasks never count.
 // In the evening, `allTomorrow` lists everything due tomorrow (steps too), not just High
-// tasks. A Waiting task whose chase date has come is listed to chase.
+// tasks. A Waiting task whose chase day (planned_on) has come is listed to chase.
+// An open task's "when" (planned_on) decides its day: planned for today (or carried over)
+// counts as today unless its deadline is already today or past; moved to a later day, it
+// keeps quiet until then, whatever its deadline.
 export function collectDue(tasks, today, { includeTomorrow = true, allTomorrow = false } = {}) {
   const overdue = [];
   const dueToday = [];
@@ -65,8 +68,16 @@ export function collectDue(tasks, today, { includeTomorrow = true, allTomorrow =
   const tomorrowDate = addDays(today, 1);
   for (const t of tasks) {
     if (t.status === DONE) continue;
-    if (t.status === WAITING && t.waiting_until && t.waiting_until <= today) chase.push({ title: t.title, date: t.waiting_until });
-    const items = [{ title: t.title, date: t.target_date, priority: t.priority }];
+    let date = t.target_date;
+    if (t.status === WAITING) {
+      const chaseDay = t.planned_on ?? t.waiting_until;
+      if (chaseDay && chaseDay <= today) chase.push({ title: t.title, date: chaseDay });
+    } else if (t.planned_on && t.planned_on > today) {
+      date = t.planned_on === tomorrowDate ? tomorrowDate : null;
+    } else if (t.planned_on && !(date && date <= today)) {
+      date = today;
+    }
+    const items = [{ title: t.title, date, priority: t.priority }];
     for (const st of t.subtasks || []) {
       if (!st.done) items.push({ title: `${st.title} (${t.title})`, date: st.target_date, priority: t.priority, subtask: true });
     }

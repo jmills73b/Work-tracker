@@ -28,12 +28,13 @@ describe('marking a recurring task done', () => {
 
     const stmts = batched(d);
     const insert = stmts.find((s) => s.sql.includes('INSERT INTO tasks'));
-    expect(insert.params.slice(2, 9)).toEqual(['Weekly check-in', '', 'medium', '2999-01-11', null, 'weekly:1', insert.params[9]]);
+    // title, description, priority, deadline, when, team, repeat
+    expect(insert.params.slice(2, 9)).toEqual(['Weekly check-in', '', 'medium', '2999-01-11', null, null, 'weekly:1']);
     const sub = stmts.find((s) => s.sql.includes('INSERT INTO subtasks'));
     expect(sub.params).toContain('Prep notes');
     expect(sub.params).toContain('2999-01-10');
     expect(stmts.find((s) => s.sql.startsWith('UPDATE tasks SET next_task_id')).params).toEqual([insert.params[0], 't1', 7]);
-    expect(stmts.some((s) => s.params?.includes('Next occurrence created, due 2999-01-11'))).toBe(true);
+    expect(stmts.some((s) => s.params?.includes('Next occurrence created, for 2999-01-11'))).toBe(true);
   });
 
   it('a log entry never changes status, so it never creates the next one', async () => {

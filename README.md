@@ -6,15 +6,17 @@ A clean, private tracker for your own tasks. Capture a task, give it a due date 
   - **Today** (the home screen): your plan for the day, what to chase, what's overdue, due today and due in the next 7 days, with each count in its heading. Steps show under their own dates.
   - **Tasks**: everything, filtered to Open, Waiting or Done, with a High-only toggle, a team filter and sorting. Done lists newest first, and search looks through every task.
   - **Review**: what you finished each week, your on-time rate, what's overdue or waiting, and a per-team breakdown.
-- **Three states**: Open, Waiting (with a date to chase) and Done. A **High** flag marks what matters.
-- **One-tap reschedule**: the clock on each row plans it for today, moves it to tomorrow or next week, marks it Waiting (chase in 2 days), or takes any date.
+- **Three states**: Open, Waiting (with a day to chase) and Done. A **High** flag marks what matters.
+- **When and Deadline**: *When* is the day you'll act on a task, and the clock on each row moves it (Today, Tomorrow, Next week, any day) in one tap. *Deadline* is optional, and nothing routine ever moves it.
+- **Chasing**: mark a task Waiting and it comes back on its chase day. "Chased · again in 2 days" is one tap and goes in the log, so you can see how often you've asked.
 - **Daily plan**: tick what you'll work on today. From 5pm the button (and the 8pm reminder) plans tomorrow instead. Anything unfinished carries over.
+- **Undo** after ticking a task done.
 - **Steps**: a checklist under each task, each with an optional due date. Shown as "2/5" on the row.
 - **The task panel** saves as you go, with no Save button. It shows the title, notes, a one-line summary of the fields (tap it to edit), the steps, then the log. Duplicate and Delete sit in its ⋯ menu.
 - **Log**: post notes as you go. Changes to state, due date, High, team and steps are logged automatically.
 - **Reminders**: up to three a day on your phone (7:30am, 10am and 8pm by default). Each lists what's overdue, due today, to chase, and High tasks due tomorrow. The evening one lists everything due tomorrow and opens tomorrow's plan. It uses free web push; set it up from your name menu → Reminders.
-- **Quick add**: type `Board deck fri !high #RDH` and it becomes a High task due Friday for RDH. A preview shows how it was read before saving.
-- **Teams**: labels for tasks (Dev Ops, RDH, GDS, or none). Add one straight from a task's team picker or from name menu → Teams. A team filter narrows every view.
+- **Quick add**: type `Board deck fri !high #RDH` and it becomes a High task for Friday, for RDH (`by fri` makes Friday the deadline). A preview shows how it was read before saving.
+- **Teams**: your own labels for tasks (Dev Ops, RDH, GDS, or none). Add one straight from a task's team picker or from name menu → Teams. A team filter narrows every view.
 - **Repeats**: every week, 2 weeks, month, quarter or year, or N days after done. Marking one done brings the next one back with its steps.
 - **Duplicate**: copies a task with its steps. Step dates follow the copy's due date.
 - **✨ Tidy**:

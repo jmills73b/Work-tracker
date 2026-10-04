@@ -18,7 +18,7 @@ export async function list(env, user) {
 export async function create(request, env, user) {
   const { value, error } = validateTask(await request.json());
   if (error) return bad(error);
-  if (value.team_id != null && !(await findTeam(env, value.team_id))) return bad('Unknown team');
+  if (value.team_id != null && !(await findTeam(env, user.id, value.team_id))) return bad('Unknown team');
   const t = { description: '', status: OPEN, priority: NORMAL, target_date: null, team_id: null, subtasks: [], ...value };
   const id = await tasksRepo.createTask(env, user.id, t, now());
   return json(await tasksRepo.taskDetail(env, user.id, id), 201);
@@ -34,7 +34,7 @@ export async function patch(request, env, user, id) {
   if (error) return bad(error);
   const existing = await tasksRepo.getTask(env, user.id, id);
   if (!existing) return notFound();
-  const team = value.team_id != null ? await findTeam(env, value.team_id) : null;
+  const team = value.team_id != null ? await findTeam(env, user.id, value.team_id) : null;
   if (value.team_id != null && !team) return bad('Unknown team');
   const at = now();
   const stmts = tasksRepo.changeStatements(env, user.id, existing, value, at, {
