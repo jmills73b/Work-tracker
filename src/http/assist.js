@@ -36,7 +36,7 @@ async function run(request, env, user, { client } = {}, validate, call, shape) {
   }
 
   try {
-    const teams = (await listTeams(env)).map((t) => t.name);
+    const teams = (await listTeams(env, user.id)).map((t) => t.name);
     const suggestion = shape(await call(client ?? makeClient(env), value, teams), value);
     if (!suggestion) throw new AssistUnavailable('unparseable reply');
     return json(suggestion);

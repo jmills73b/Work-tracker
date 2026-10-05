@@ -21,7 +21,11 @@ export function fakeDb({ first = [], all = [], run = [], batch } = {}) {
     return {
       sql,
       params,
-      bind: (...p) => statement(sql, p),
+      bind: (...p) => {
+        // Real D1 refuses undefined (D1_TYPE_ERROR); a missing argument must fail here too.
+        if (p.some((v) => v === undefined)) throw new TypeError(`D1_TYPE_ERROR: undefined bound in: ${sql}`);
+        return statement(sql, p);
+      },
       async first() {
         calls.push({ method: 'first', sql, params });
         return answer(first, sql, params) ?? null;
